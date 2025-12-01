@@ -46,7 +46,7 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
         }
     }
 
-    if(seasonId == undefined) {
+    if (seasonId == undefined) {
         return {
             statusCode: 400,
             body: JSON.stringify({
@@ -81,7 +81,7 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
             `, [seasonId]);
 
         if ((result.rowCount ?? 0) > 0) {
-            if(result.rows[0].tournament_id !== tournamentId) {
+            if (result.rows[0].tournament_id !== tournamentId) {
                 return {
                     statusCode: 400,
                     body: JSON.stringify({
@@ -91,7 +91,16 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
             };
             return {
                 statusCode: 200,
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+
+                    // 2. What headers are allowed? (Must match client request)
+                    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+
+                    // 3. What methods are allowed?
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                },
                 body: JSON.stringify(result.rows[0])
             };
         }
