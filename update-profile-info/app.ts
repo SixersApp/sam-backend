@@ -47,12 +47,12 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
         };
     }
 
-    // if (tokenUserId !== userId) {
-    //     return {
-    //         statusCode: 403,
-    //         body: JSON.stringify({ message: "Forbidden: user mismatch" })
-    //     };
-    // }
+    if (tokenUserId !== userId) {
+        return {
+            statusCode: 403,
+            body: JSON.stringify({ message: "Forbidden: user mismatch" })
+        };
+    }
 
     // --------------------------
     // PARSE BODY

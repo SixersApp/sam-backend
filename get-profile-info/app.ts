@@ -41,7 +41,7 @@ export const lambdaHandler = async (
 
     if (!userId) {
         return {
-            statusCode: 400,
+            statusCode: 401,
             body: JSON.stringify({ message: "Missing userId in path" })
         };
     }
