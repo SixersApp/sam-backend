@@ -85,6 +85,7 @@ Resources:
             Type: COGNITO_USER_POOLS
             UserPoolArn: !Ref CognitoUserPoolArn
         DefaultAuthorizer: MyCognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false 
 
   CreateFantasyUserFunction:
     Type: AWS::Serverless::Function
