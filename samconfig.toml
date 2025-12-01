@@ -1,0 +1,36 @@
+# More information about the configuration file can be found here:
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+version = 0.1
+
+[default.global.parameters]
+stack_name = "sam-app"
+region = "us-west-2"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+CognitoUserPoolArn = "arn:aws:cognito-idp:us-west-2:804320730546:userpool/us-west-2_4xTIIoc8k"
+s3_prefix = "sam-app"
+parameter_overrides = "CognitoUserPoolArn=\"arn:aws:cognito-idp:us-west-2:804320730546:userpool/us-west-2_4xTIIoc8k\" DbName=\"postgres\" LambdaSecurityGroupId=\"sg-05e95a21c1ca75557\" PrivateSubnetOneId=\"subnet-00adce33d4770c362\" PrivateSubnetTwoId=\"subnet-04ef2b04ba52bebf3\" PrivateSubnetThreeId=\"subnet-0f0e9ef6acbb355d0\" PrivateSubnetFourId=\"subnet-04da8f9817052a5ac\""
+image_repositories = []
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+CognitoUserPoolArn = "arn:aws:cognito-idp:us-west-2:804320730546:userpool/us-west-2_4xTIIoc8k"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
