@@ -117,6 +117,15 @@ app.get("/fantasyTeamInstance/:ftiId/performances", async (req, res) => {
           ps.player_season_id,
           ps.player_id,
 
+          -- ✅ NEW: Player Details Added Here
+          p.player_name AS name,
+          p.full_name,
+          p.image AS player_image,
+          pos.name AS role,
+          c.name AS country_name,
+          c.image AS country_image,
+
+          -- Existing Performance Data
           ppa.id AS performance_id,
           ppa.runs_scored,
           ppa.balls_faced,
@@ -153,15 +162,13 @@ app.get("/fantasyTeamInstance/:ftiId/performances", async (req, res) => {
             (COALESCE(ppa.fours, 0) * 1) +
             (COALESCE(ppa.sixes, 0) * 2) +
             (CASE WHEN COALESCE(ppa.runs_scored, 0) > 50 THEN 8 ELSE 0 END) +
-            (CASE WHEN COALESCE(ppa.runs_scored, 0) > 100 THEN 8 ELSE 0 END) + -- Note: >100 gets both +8 bonuses (16 total)
+            (CASE WHEN COALESCE(ppa.runs_scored, 0) > 100 THEN 8 ELSE 0 END) + 
             
             -- Batting Strike Rate Logic
             (CASE 
-              -- Prevent Division by Zero
               WHEN COALESCE(ppa.balls_faced, 0) = 0 THEN 0 
               ELSE 
                 CASE 
-                  -- Using 100.0 forces floating point math
                   WHEN (COALESCE(ppa.runs_scored, 0) * 100.0 / ppa.balls_faced) BETWEEN 0 AND 30 THEN -6
                   WHEN (COALESCE(ppa.runs_scored, 0) * 100.0 / ppa.balls_faced) > 30 AND (COALESCE(ppa.runs_scored, 0) * 100.0 / ppa.balls_faced) <= 39 THEN -4
                   WHEN (COALESCE(ppa.runs_scored, 0) * 100.0 / ppa.balls_faced) >= 40 AND (COALESCE(ppa.runs_scored, 0) * 100.0 / ppa.balls_faced) <= 50 THEN -2
@@ -182,7 +189,6 @@ app.get("/fantasyTeamInstance/:ftiId/performances", async (req, res) => {
               WHEN COALESCE(ppa.balls_bowled, 0) = 0 THEN 0 
               ELSE 
                 CASE 
-                  -- Calculation: (Runs * 6) / Balls = Runs Per Over
                   WHEN (COALESCE(ppa.runs_conceded, 0) * 6.0 / ppa.balls_bowled) BETWEEN 0 AND 2.5 THEN 6
                   WHEN (COALESCE(ppa.runs_conceded, 0) * 6.0 / ppa.balls_bowled) > 2.5 AND (COALESCE(ppa.runs_conceded, 0) * 6.0 / ppa.balls_bowled) <= 3.49 THEN 4
                   WHEN (COALESCE(ppa.runs_conceded, 0) * 6.0 / ppa.balls_bowled) >= 3.5 AND (COALESCE(ppa.runs_conceded, 0) * 6.0 / ppa.balls_bowled) <= 4.5 THEN 2
@@ -195,6 +201,11 @@ app.get("/fantasyTeamInstance/:ftiId/performances", async (req, res) => {
           ) AS fantasy_points
 
       FROM player_seasons ps
+
+      -- ✅ NEW: Joins to get Player Details
+      JOIN irldata.player p ON p.id = ps.player_id
+      LEFT JOIN irldata.position pos ON pos.id = p.position_id
+      LEFT JOIN irldata.country_info c ON c.id = p.country_id
 
       JOIN match_lookup ml
           ON ml.season_id = ps.season_id
