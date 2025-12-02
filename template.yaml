@@ -728,14 +728,14 @@ Resources:
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
-      CodeUri: leagues-scoring-rules-get/
+      CodeUri: league-scoring-rules-get/
       Handler: app.lambdaHandler
       Events:
         GetHomeFeedMatches:
           Type: Api 
           Properties:
             RestApiId: !Ref MyApi
-            Path: /fantasyTeamInstance/{ftiId}/performances
+            Path: /scoringRules/{ftiId}
             Method: get
     Metadata:
       # Manage esbuild properties
