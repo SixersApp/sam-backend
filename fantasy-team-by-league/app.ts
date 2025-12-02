@@ -33,42 +33,37 @@ const getPool = (): pg.Pool => {
 }
 
 
+
 export const lambdaHandler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
+
+  const leagueId = event.queryStringParameters?.leagueId;
   const userId = event.requestContext.authorizer?.claims?.["sub"];
 
   if (!userId) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ message: "Unauthorized" })
-    };
+    return { statusCode: 401, body: JSON.stringify({ message: "Unauthorized" }) };
+  }
+
+  if (!leagueId) {
+    return { statusCode: 400, body: JSON.stringify({ message: "Missing leagueId" }) };
   }
 
   const client = await getPool().connect();
   try {
     const result = await client.query(
       `
-      SELECT DISTINCT
-        l.id,
-        l.name,
-        l.tournament_id,
-        l.creator_id,
-        l.status,
-        l.max_teams,
-        l.join_code
-      FROM fantasydata.leagues l
-      JOIN fantasydata.fantasy_teams ft
-        ON ft.league_id = l.id
-      WHERE ft.user_id = $1
-      ORDER BY l.name ASC;
+      SELECT *
+      FROM fantasydata.fantasy_teams
+      WHERE user_id = $1 AND league_id = $2
+      LIMIT 1;
       `,
-      [userId]
+      [userId, leagueId]
     );
 
     return {
       statusCode: 200,
-      body: JSON.stringify(result.rows)
+      body: JSON.stringify(result.rows[0] ?? null)
     };
   } finally {
     client.release();

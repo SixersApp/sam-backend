@@ -37,11 +37,10 @@ const getPool = (): pg.Pool => {
 export const lambdaHandler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  const tokenUserId =
-    event.requestContext.authorizer?.claims?.["cognito:username"];
+  const userId = event.requestContext.authorizer?.claims?.["sub"];
 
   // Must be logged in
-  if (!tokenUserId) {
+  if (!userId) {
     return {
       statusCode: 401,
       body: JSON.stringify({ message: "Unauthorized" }),
@@ -111,7 +110,7 @@ export const lambdaHandler = async (
 
       ORDER BY fm.match_num DESC;
       `,
-      [tokenUserId, matchNum]
+      [userId, matchNum]
     );
 
     return {

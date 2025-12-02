@@ -380,4 +380,183 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
+    # ----------------------------------------------------------
+  # 1) GET ALL FANTASY TEAMS FOR USER
+  #     GET /fantasy-teams?userId=<userId>
+  # ----------------------------------------------------------
+  GetFantasyTeamsForUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: fantasy-teams-get/
+      Handler: app.lambdaHandler
+      Events:
+        GetFantasyTeamsForUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-teams
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # 2) GET USER'S FANTASY TEAM IN A LEAGUE
+  #     GET /user-fantasy-team/by-league?leagueId=<leagueId>
+  # ----------------------------------------------------------
+  GetUserFantasyTeamInLeagueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: fantasy-team-by-league/
+      Handler: app.lambdaHandler
+      Events:
+        GetUserFantasyTeamInLeague:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /user-fantasy-team/by-league
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # 3) GET ALL FANTASY TEAMS IN A LEAGUE
+  #     GET /fantasy-teams/in-league?leagueId=<leagueId>
+  # ----------------------------------------------------------
+  GetFantasyTeamsInLeagueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: fantasy-teams-in-league/
+      Handler: app.lambdaHandler
+      Events:
+        GetFantasyTeamsInLeague:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-teams/in-league
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # 4) GET FANTASY TEAM INSTANCE (teamId + matchNum)
+  #     GET /fantasy-team-instance?teamId=<id>&matchNum=<num>
+  # ----------------------------------------------------------
+  GetFantasyTeamInstanceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: fantasy-team-instance-get/
+      Handler: app.lambdaHandler
+      Events:
+        GetFantasyTeamInstance:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
   

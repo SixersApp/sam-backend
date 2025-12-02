@@ -33,42 +33,57 @@ const getPool = (): pg.Pool => {
 }
 
 
+
 export const lambdaHandler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
+
+  const teamId = event.queryStringParameters?.teamId;
+  const matchNumStr = event.queryStringParameters?.matchNum;
   const userId = event.requestContext.authorizer?.claims?.["sub"];
 
   if (!userId) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ message: "Unauthorized" })
-    };
+    return { statusCode: 401, body: JSON.stringify({ message: "Unauthorized" }) };
   }
+
+  if (!teamId || !matchNumStr) {
+    return { statusCode: 400, body: JSON.stringify({ message: "Missing teamId or matchNum" }) };
+  }
+
+  const matchNum = Number(matchNumStr);
 
   const client = await getPool().connect();
   try {
-    const result = await client.query(
+    // Validate ownership: ensure user owns the fantasy team
+    const ownerCheck = await client.query(
       `
-      SELECT DISTINCT
-        l.id,
-        l.name,
-        l.tournament_id,
-        l.creator_id,
-        l.status,
-        l.max_teams,
-        l.join_code
-      FROM fantasydata.leagues l
-      JOIN fantasydata.fantasy_teams ft
-        ON ft.league_id = l.id
-      WHERE ft.user_id = $1
-      ORDER BY l.name ASC;
+      SELECT 1
+      FROM fantasydata.fantasy_teams
+      WHERE id = $1 AND user_id = $2
+      LIMIT 1;
       `,
-      [userId]
+      [teamId, userId]
+    );
+
+    if (ownerCheck.rowCount === 0) {
+      return { statusCode: 403, body: JSON.stringify({ message: "Forbidden" }) };
+    }
+
+    // Return the instance
+    const instance = await client.query(
+      `
+      SELECT *
+      FROM fantasydata.fantasy_team_instance
+      WHERE fantasy_team_id = $1
+      AND match_num = $2
+      LIMIT 1;
+      `,
+      [teamId, matchNum]
     );
 
     return {
       statusCode: 200,
-      body: JSON.stringify(result.rows)
+      body: JSON.stringify(instance.rows[0] ?? null)
     };
   } finally {
     client.release();
