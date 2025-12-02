@@ -99,28 +99,28 @@ app.post("/scoring/createMatch", async (req, res) => {
       SELECT t.* FROM irldata.team t WHERE t.id = $1;  
     `, [match_data.home_team_id])).rows[0];
 
-    if(awayTeamInfo == undefined || homeTeamInfo == undefined) {
-      return res.status(403).json({ message: "home team and/or away team doesn't exist"});
+    if (awayTeamInfo == undefined || homeTeamInfo == undefined) {
+      return res.status(403).json({ message: "home team and/or away team doesn't exist" });
     }
 
-    if(seasonInfo == undefined) {
+    if (seasonInfo == undefined) {
       return res.status(403).json({ message: "season doesn't exist" });
     }
 
-    if(tournamentInfo == undefined) {
+    if (tournamentInfo == undefined) {
       return res.status(403).json({ message: "tournament doesn't exist" });
     }
 
-    if(seasonInfo.tournament_id != tournamentInfo.id) {
-      return res.status(403).json({ message: "given season doesn't belong in given tournament"});
+    if (seasonInfo.tournament_id != tournamentInfo.id) {
+      return res.status(403).json({ message: "given season doesn't belong in given tournament" });
     }
 
-    if(seasonInfo.teams.find((t: { id: string }) => t.id === homeTeamInfo.id) == undefined) {
-      return res.status(403).json({ message: "home team doesn't exist in season"});
+    if (seasonInfo.teams.find((t: { id: string }) => t.id === homeTeamInfo.id) == undefined) {
+      return res.status(403).json({ message: "home team doesn't exist in season" });
     }
 
-    if(seasonInfo.teams.find((t: { id: string }) => t.id === awayTeamInfo.id) == undefined) {
-      return res.status(403).json({ message: "away team doesn't exist in season"});
+    if (seasonInfo.teams.find((t: { id: string }) => t.id === awayTeamInfo.id) == undefined) {
+      return res.status(403).json({ message: "away team doesn't exist in season" });
     }
 
     const response = await client.query(`
@@ -169,12 +169,95 @@ app.post("/scoring/createMatch", async (req, res) => {
   })
 });
 
-app.patch("/scoring/:matchId/startScoring", (req, res) => {
-  res.json({
-    userId: req.lambdaEvent.requestContext.authorizer?.claims?.["sub"],
-    matchId: req.lambdaEvent.pathParameters?.matchId,
-    message: "Start Scoring Match!!"
-  })
+app.patch("/scoring/:matchId/startScoring", async (req, res) => {
+  const tournamentId = req.lambdaEvent.requestContext.authorizer?.claims?.["custom:tournamentId"];
+  const match_id = req.lambdaEvent.pathParameters?.matchId;
+
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    const matchInfo = (await client.query(`
+      SELECT * FROM irldata.match_info m
+      WHERE m.id = $1;  
+    `, [match_id])).rows[0];
+
+    if (matchInfo == undefined) {
+      return res.status(403).json({ message: "Match doesn't exist" });
+    }
+
+    if (matchInfo.tournament_id !== tournamentId) {
+      return res.status(401).json({ message: "You are not allowed to modify this match " });
+    }
+
+    await client.query("BEGIN");
+
+    const updated_match = (await client.query(`
+      UPDATE irldata.match_info 
+      SET status = $1
+      WHERE id = $2
+      RETURNING *;  
+    `, ['LIVE', match_id])).rows[0];
+
+    const player_performances = (await client.query(`
+      INSERT INTO irldata.player_performance (
+        player_season_id, team_id, match_id, inserted_at
+      )
+      SELECT
+        id, team_id, $1, NOW()
+      FROM irldata.player_season_info
+      WHERE season_id = $2 AND team_id IN ($3, $4)
+      ON CONFLICT (player_season_id, match_id) DO NOTHING;  
+    `, [match_id, updated_match.season_id, updated_match.home_team_id, updated_match.away_team_id]));
+
+    const match_data = (await client.query(`
+      SELECT 
+        m.*, 
+        
+        -- Home Team (Wrapped in COALESCE to return [] instead of null if empty)
+        COALESCE(
+          (
+            SELECT jsonb_agg(
+              to_jsonb(pp) || jsonb_build_object('player_id', psi.player_id)
+            )
+            FROM irldata.player_performance pp
+            JOIN irldata.player_season_info psi ON pp.player_season_id = psi.id
+            WHERE pp.match_id = $1 AND pp.team_id = $2
+          ),
+          '[]'::jsonb
+        ) AS home_team_players,
+
+        -- Away Team
+        COALESCE(
+          (
+            SELECT jsonb_agg(
+              to_jsonb(pp) || jsonb_build_object('player_id', psi.player_id)
+            )
+            FROM irldata.player_performance pp
+            JOIN irldata.player_season_info psi ON pp.player_season_id = psi.id
+            WHERE pp.match_id = $1 AND pp.team_id = $3
+          ),
+          '[]'::jsonb
+        ) AS away_team_players
+
+      FROM irldata.match_info m
+      WHERE m.id = $1;
+      `, [match_id, updated_match.home_team_id, updated_match.away_team_id]));
+
+    await client.query(`COMMIT`);
+    return res.json(match_data.rows[0]);
+
+  } catch (e) {
+
+    await client?.query('ROLLBACK');
+    res.status(500).json({ message: "Something went wrong" });
+    
+  } finally {
+    client?.release();
+  }
+
 });
 
 app.post("/scoring/:matchId/addEvent", (req, res) => {
