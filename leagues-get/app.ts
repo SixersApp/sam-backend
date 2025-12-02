@@ -56,7 +56,8 @@ export const lambdaHandler = async (
         l.creator_id,
         l.status,
         l.max_teams,
-        l.join_code
+        l.join_code,
+        l.season_id
       FROM fantasydata.leagues l
       JOIN fantasydata.fantasy_teams ft
         ON ft.league_id = l.id
