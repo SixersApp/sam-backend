@@ -201,7 +201,7 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
       RETURNING *;  
     `, ['LIVE', match_id])).rows[0];
 
-    const player_performances = (await client.query(`
+    await client.query(`
       INSERT INTO irldata.player_performance (
         player_season_id, team_id, match_id, inserted_at
       )
@@ -210,40 +210,71 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
       FROM irldata.player_season_info
       WHERE season_id = $2 AND team_id IN ($3, $4)
       ON CONFLICT (player_season_id, match_id) DO NOTHING;  
-    `, [match_id, updated_match.season_id, updated_match.home_team_id, updated_match.away_team_id]));
+    `, [match_id, updated_match.season_id, updated_match.home_team_id, updated_match.away_team_id]);
 
     const match_data = (await client.query(`
       SELECT 
         m.*, 
-        
-        -- Home Team (Wrapped in COALESCE to return [] instead of null if empty)
+
+        -- Home Team
         COALESCE(
           (
             SELECT jsonb_agg(
-              to_jsonb(pp) || jsonb_build_object('player_id', psi.player_id)
+              -- Merge the performance row (pp) with the new descriptive fields
+              to_jsonb(pp) || jsonb_build_object(
+                'player_id', psi.player_id,
+                'player_name', p.player_name,
+                'full_name', p.full_name,
+                'image', p.image,
+                'date_of_birth', p.date_of_birth,
+                'country_name', c.name,
+                'country_image', c.image,
+                'position_name', pos.name
+              )
             )
             FROM irldata.player_performance pp
+            -- 1. Link Performance to Season Info
             JOIN irldata.player_season_info psi ON pp.player_season_id = psi.id
+            -- 2. Link Season Info to Player Profile
+            JOIN irldata.player p ON psi.player_id = p.id
+            -- 3. Link Player to Country (Left Join for safety)
+            LEFT JOIN irldata.country_info c ON p.country_id = c.id
+            -- 4. Link Player to Position (Left Join for safety)
+            LEFT JOIN irldata.position pos ON p.position_id = pos.id
+            
             WHERE pp.match_id = $1 AND pp.team_id = $2
           ),
           '[]'::jsonb
         ) AS home_team_players,
 
-        -- Away Team
+        -- Away Team (Same Logic)
         COALESCE(
           (
             SELECT jsonb_agg(
-              to_jsonb(pp) || jsonb_build_object('player_id', psi.player_id)
+              to_jsonb(pp) || jsonb_build_object(
+                'player_id', psi.player_id,
+                'player_name', p.player_name,
+                'full_name', p.full_name,
+                'image', p.image,
+                'date_of_birth', p.date_of_birth,
+                'country_name', c.name,
+                'country_image', c.image,
+                'position_name', pos.name
+              )
             )
             FROM irldata.player_performance pp
             JOIN irldata.player_season_info psi ON pp.player_season_id = psi.id
+            JOIN irldata.player p ON psi.player_id = p.id
+            LEFT JOIN irldata.country_info c ON p.country_id = c.id
+            LEFT JOIN irldata.position pos ON p.position_id = pos.id
+            
             WHERE pp.match_id = $1 AND pp.team_id = $3
           ),
           '[]'::jsonb
         ) AS away_team_players
 
-      FROM irldata.match_info m
-      WHERE m.id = $1;
+        FROM irldata.match_info m
+        WHERE m.id = $1;
       `, [match_id, updated_match.home_team_id, updated_match.away_team_id]));
 
     await client.query(`COMMIT`);
@@ -253,7 +284,7 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
 
     await client?.query('ROLLBACK');
     res.status(500).json({ message: "Something went wrong" });
-    
+
   } finally {
     client?.release();
   }
