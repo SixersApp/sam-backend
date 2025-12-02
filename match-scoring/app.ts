@@ -146,11 +146,12 @@ app.post("/scoring/createMatch", async (req, res) => {
         $5,
         $6,
         NOW(),
+        $7,
         0,
         0
       )
       RETURNING id;
-    `, [match_data.match_date, match_data.tournament_id, match_data.season_id, match_data.venue_id, match_data.home_team_id, match_data.away_team_id]);
+    `, [match_data.match_date, match_data.tournament_id, match_data.season_id, match_data.venue_id, match_data.home_team_id, match_data.away_team_id, "NS"]);
 
     return res.json({ id: response.rows[0].id });
   } catch (e) {
