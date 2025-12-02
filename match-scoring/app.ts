@@ -215,8 +215,6 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
     const match_data = (await client.query(`
       SELECT 
         m.*, 
-
-        -- 1. Home Team Players
         COALESCE(
           (
             SELECT jsonb_agg(
@@ -241,7 +239,6 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
           '[]'::jsonb
         ) AS home_team_players,
 
-        -- 2. Away Team Players
         COALESCE(
           (
             SELECT jsonb_agg(
@@ -266,7 +263,6 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
           '[]'::jsonb
         ) AS away_team_players,
 
-        -- 3. NEW: Ball by Ball Data
         COALESCE(
           (
             SELECT jsonb_agg(to_jsonb(bbb) ORDER BY bbb.ball_num ASC)
@@ -285,7 +281,7 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
   } catch (e) {
 
     await client?.query('ROLLBACK');
-    res.status(500).json({ message: "Something went wrong" });
+    res.status(500).json({ message: "Something went wrong", data: e });
 
   } finally {
     client?.release();
@@ -296,7 +292,7 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
 app.post("/scoring/:matchId/addEvent", async (req, res) => {
   const tournamentId = req.lambdaEvent.requestContext.authorizer?.claims?.["custom:tournamentId"];
   const match_id = req.lambdaEvent.pathParameters?.matchId;
-  const ball_data = JSON.parse(req.lambdaEvent.body ?? '{}');
+  const ball_data = req.body;
 
   const required_fields = ["match_id", "batting_team"];
   required_fields.forEach(f => {
@@ -304,6 +300,8 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
       return res.status(400).json({ message: "Missing match_id or batting_team id" });
     }
   });
+
+  console.log("\n\n", ball_data, "\n\n");
 
   let client;
   try {
@@ -379,59 +377,56 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
     ])).rows[0];
 
     let updated_match_info;
-    if ((ball_data.wicket_taken ?? null) != null) {
+    if ((ball_data.wicket_taken ?? null) == null) {
       const queryText = `
         WITH batter_update AS (
           UPDATE irldata.player_performance pp
           SET 
-            runs_scored = runs_scored + $1,
-            balls_faced = balls_faced + $2,
-            sixes = sixes + $3,
-            fours = fours + $8
+            runs_scored = COALESCE(runs_scored, 0) + $1,
+            balls_faced = COALESCE(balls_faced, 0) + $2,
+            sixes = COALESCE(sixes, 0) + $3,
+            fours = COALESCE(fours, 0) + $8
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $4       -- batterPlayerId
-            AND pp.match_id = $5         -- matchId
+            AND psi.player_id = $4       
+            AND pp.match_id = $5       
         ),
         bowler_update AS (
           UPDATE irldata.player_performance pp
           SET 
-            runs_conceded = runs_conceded + $1,
-            balls_bowled = balls_bowled + $2
+            runs_conceded = COALESCE(runs_conceded, 0) + $1,
+            balls_bowled = COALESCE(balls_bowled, 0) + $2
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $6       -- bowlerPlayerId
-            AND pp.match_id = $5         -- matchId
+            AND psi.player_id = $6       
+            AND pp.match_id = $5       
         )
-        -- Final Step: Update the Match Score
         UPDATE irldata.match_info
         SET 
-          -- Update Home Score if they are batting, otherwise keep it same
           home_team_score = CASE 
-            WHEN home_team_id = $7 THEN home_team_score + $1
+            WHEN home_team_id = $7 THEN COALESCE(home_team_score, 0) + $1
             ELSE home_team_score 
           END,
           home_team_balls = CASE 
-            WHEN home_team_id = $7 THEN home_team_balls + $2 
+            WHEN home_team_id = $7 THEN COALESCE(home_team_balls, 0) + $2 
             ELSE home_team_balls 
           END,
           
-          -- Update Away Score if they are batting (battingTeamId != home_team_id)
           away_team_score = CASE 
-            WHEN away_team_id = $7 THEN away_team_score + $1 
+            WHEN away_team_id = $7 THEN COALESCE(away_team_score, 0) + $1 
             ELSE away_team_score 
           END,
           away_team_balls = CASE 
-            WHEN away_team_id = $7 THEN away_team_balls + $2 
+            WHEN away_team_id = $7 THEN COALESCE(away_team_balls, 0) + $2 
             ELSE away_team_balls 
-          END,
+          END
         WHERE id = $5
         RETURNING *;
       `;
 
       updated_match_info = (await client.query(queryText, [
         added_ball.runs_scored,
-        added_ball.balls_faced,
+        added_ball.balls_played,
         (added_ball.six ?? false) ? 1 : 0,
         added_ball.crease_batsman,
         added_ball.match_id,
@@ -444,54 +439,50 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
         WITH batter_update AS (
           UPDATE irldata.player_performance pp
           SET 
-            balls_faced = balls_faced + $1
+            balls_faced = COALESCE(balls_faced, 0) + $1
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $3       -- batterPlayerId
+            AND psi.player_id = $3       
             AND pp.match_id = $2
         ),
         bowler_update AS (
           UPDATE irldata.player_performance pp
           SET 
-            balls_bowled = balls_bowled + $1,
-            wickets_taken = wickets_taken + 1        -- <--- Bowler gets the wicket
-            -- No runs conceded here
+            balls_bowled = COALESCE(balls_bowled, 0) + $1,
+            wickets_taken = COALESCE(wickets_taken, 0) + 1        
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $4       -- bowlerPlayerId
+            AND psi.player_id = $4       
             AND pp.match_id = $2
         ),
         fielder_update AS (
           UPDATE irldata.player_performance pp
           SET 
-            catches = catches + 1        -- <--- Fielder gets the catch
+            catches = COALESCE(catches, 0) + 1       
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $5       -- fielderPlayerId
+            AND psi.player_id = $5      
             AND pp.match_id = $2
         )
-        -- Final Step: Update Match Info (Balls & Wickets)
         UPDATE irldata.match_info
         SET 
           home_team_balls = CASE 
-            WHEN home_team_id = $6 THEN home_team_balls + 1 
+            WHEN home_team_id = $6 THEN COALESCE(home_team_balls, 0) + 1 
             ELSE home_team_balls 
           END,
-          home_team_wickets = CASE       -- <--- Increment Wickets Column
-            WHEN home_team_id = $6 THEN home_team_wickets + 1 
+          home_team_wickets = CASE   
+            WHEN home_team_id = $6 THEN COALESCE(home_team_wickets, 0) + 1 
             ELSE home_team_wickets 
           END,
           
           away_team_balls = CASE 
-            WHEN away_team_id = $6 THEN away_team_balls + 1 
+            WHEN away_team_id = $6 THEN COALESCE(away_team_balls, 0) + 1 
             ELSE away_team_balls 
           END,
           away_team_wickets = CASE 
-            WHEN away_team_id = $6 THEN away_team_wickets + 1 
+            WHEN away_team_id = $6 THEN COALESCE(away_team_wickets, 0) + 1 
             ELSE away_team_wickets 
-          END,
-
-          last_updated = NOW()
+          END
         WHERE id = $2
         RETURNING *;
       `;
@@ -510,7 +501,6 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
       SELECT 
         m.*, 
 
-        -- 1. Home Team Players
         COALESCE(
           (
             SELECT jsonb_agg(
@@ -534,8 +524,6 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
           ),
           '[]'::jsonb
         ) AS home_team_players,
-
-        -- 2. Away Team Players
         COALESCE(
           (
             SELECT jsonb_agg(
@@ -560,7 +548,6 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
           '[]'::jsonb
         ) AS away_team_players,
 
-        -- 3. NEW: Ball by Ball Data
         COALESCE(
           (
             SELECT jsonb_agg(to_jsonb(bbb) ORDER BY bbb.ball_num ASC)
@@ -573,13 +560,13 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
       FROM irldata.match_info m
       WHERE m.id = $1;
     `, [match_id, updated_match_info.home_team_id, updated_match_info.away_team_id])).rows[0];
-
-    res.json(match_data);
+    await client.query("COMMIT");
+    return res.json(match_data);
 
   } catch (e) {
 
     await client?.query('ROLLBACK');
-    res.status(500).json({ message: "Something went wrong" });
+    res.status(500).json({ message: "Something went wrong", details: e });
 
   } finally {
     client?.release();
