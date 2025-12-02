@@ -60,6 +60,7 @@ app.get("/matches/homeFeed", async (req, res) => {
           m.id,
           m.match_date,
           m.tournament_id,
+          t.name AS tournament_name,
           m.season_id,
           m.venue_id,
           m.home_team_id,
@@ -79,6 +80,7 @@ app.get("/matches/homeFeed", async (req, res) => {
       FROM irldata.match_info m
       JOIN irldata.team ht ON ht.id = m.home_team_id
       JOIN irldata.team at ON at.id = m.away_team_id
+      JOIN irldata.tournament_info t ON t.id = m.tournament_id
       WHERE m.tournament_id IN (
           SELECT DISTINCT l.tournament_id
           FROM fantasydata.fantasy_teams ft
