@@ -641,7 +641,7 @@ Resources:
       Handler: app.lambdaHandler
       Events:
         GetHomeFeedMatches:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api 
           Properties:
             RestApiId: !Ref MyApi
             Path: /matches/homeFeed
@@ -650,7 +650,7 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
-            Path: /matches/:matchId
+            Path: /matches/{matchId}
             Method: get
     Metadata:
       # Manage esbuild properties
