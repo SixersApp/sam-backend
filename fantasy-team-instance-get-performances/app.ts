@@ -40,8 +40,6 @@ app.use(cors());
 app.use(express.json());
 
 
-
-
 app.get("/fantasyTeamInstance/:ftiId/performances", async (req, res) => {
   const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
   const { ftiId } = req.params;
