@@ -166,7 +166,7 @@ app.get("/fantasy-teams/:fantasyTeamId", async (req, res) => {
 
     if (result.rowCount === 0) {
       return res.status(404).json({
-        message: "Fantasy team not found or access denied"
+        message: "Fantasy team not found or you do not have access to it"
       });
     }
 
