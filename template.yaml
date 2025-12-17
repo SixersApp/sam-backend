@@ -781,8 +781,14 @@ Resources:
           Type: Api 
           Properties:
             RestApiId: !Ref MyApi
-            Path: /auth/signup
+            Path: /users/auth/signup
             Method: put
+        GetUserProfile:
+          Type: Api 
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /users/auth/profile
+            Method: get
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild

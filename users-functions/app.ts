@@ -42,13 +42,13 @@ app.use(express.json());
 /* =======================================================================================
    CREATE OR UPDATE USER AUTH AND DEFAULT PROFILE DATA
    ======================================================================================= */
-app.put("/auth/signup", async (req, res) => {
+app.put("/users/auth/signup", async (req, res) => {
   if (!req.body) {
     return res.status(400).json({ message: "Missing request body" });
   }
 
   const userData = req.body;
-  
+
   const username = req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
 
   if (!username) {
@@ -111,6 +111,53 @@ app.put("/auth/signup", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   } finally {
     client?.release();
+  }
+});
+
+/* =======================================================================================
+   UPDATE USER PROFILE DATA
+   ======================================================================================= */
+app.get("/users/profile", async (req, res) => {
+  const userId = req.lambdaEvent.pathParameters?.userid;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  let client;
+
+  try {
+      const pool = getPool();
+      client = await pool.connect();
+
+      const result = await client.query(
+          `SELECT 
+              user_id,
+              full_name,
+              country,
+              dob,
+              onboarding_stage,
+              experience,
+              created_at
+            FROM authdata.profiles
+            WHERE user_id = $1`,
+          [userId]
+      );
+
+      if (result.rowCount === 0) {
+          return res.status(404).json({ message: "Profile not found" });
+      }
+
+      return res.status(200).json({ message: "Profile retrieved successfully", profile: result.rows[0] });
+
+  } catch (err: any) {
+      console.error(err);
+      return res.status(500).json({
+          message: "Internal server error",
+          error: err.message
+      });
+  } finally {
+      if (client) client.release();
   }
 });
 
