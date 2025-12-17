@@ -4,6 +4,7 @@ import fs from "fs";
 import express from "express";
 import serverless from "serverless-http";
 import cors from "cors";
+import { start } from "repl";
 
 /**
  * Extend Express Request to include Lambda event/context
@@ -107,8 +108,8 @@ app.get("/tournaments/:tournamentId", async (req, res) => {
 });
 
 /* =======================================================================================
-   GET SEASONS FOR TOURNAMENT BY YEAR RANGE
-   GET /tournaments/:tournamentId/seasons/:startYear/:endYear
+   GET SEASONS FOR TOURNAMENT
+   GET /tournaments/:tournamentId/seasons
    ======================================================================================= */
 app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
 
@@ -147,7 +148,9 @@ app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
 
       return res.status(200).json({
         tournamentId,
-        season_ids: result.rows.map(r => r.id)
+        season_ids: result.rows.map(r => r.id),
+        start_years: result.rows.map(r => r.start_year),
+        end_years: result.rows.map(r => r.end_year)
       });
 
     } catch (err) {
