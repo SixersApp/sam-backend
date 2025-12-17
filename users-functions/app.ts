@@ -61,6 +61,18 @@ app.put("/users/auth/signup", async (req, res) => {
     const pool = getPool();
     client = await pool.connect();
 
+    const result = await client.query(
+      `
+      SELECT * FROM authdata.app_user WHERE id = $1
+      `,
+      [username]
+    );
+
+      if (result.rowCount && result.rowCount > 0) {
+        return res.status(200).json({ message: "User already exists", userId: username });
+      }
+
+
     await client.query('BEGIN');
 
     // ---------- UPSERT app_user ----------
