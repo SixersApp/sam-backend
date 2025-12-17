@@ -110,14 +110,11 @@ app.get("/tournaments/:tournamentId", async (req, res) => {
    GET SEASONS FOR TOURNAMENT BY YEAR RANGE
    GET /tournaments/:tournamentId/seasons/:startYear/:endYear
    ======================================================================================= */
-app.get(
-  "/tournaments/:tournamentId/seasons",
-  async (req, res) => {
+app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
 
     const { tournamentId} = req.params;
 
-    const tokenUserId =
-      req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+    const tokenUserId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
 
     // --------------------------
     // AUTH / VALIDATION
@@ -155,7 +152,7 @@ app.get(
 
     } catch (err) {
       console.error(
-        "GET /tournaments/:tournamentId/seasons/:startYear/:endYear failed:",
+        "GET /tournaments/:tournamentId/seasons failed:",
         err
       );
       return res.status(500).json({

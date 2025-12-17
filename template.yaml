@@ -834,11 +834,17 @@ Resources:
       CodeUri: tournaments-functions/
       Handler: app.lambdaHandler
       Events:
-        CreateUser:
-          Type: Api 
+        GetTournament:
+          Type: Api
           Properties:
             RestApiId: !Ref MyApi
             Path: /tournaments/{tournamentId}
+            Method: get
+        GetTournamentSeasons:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tournaments/{tournamentId}/seasons
             Method: get
     Metadata:
       # Manage esbuild properties
