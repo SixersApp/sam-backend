@@ -47,7 +47,10 @@ app.put("/auth/signup", async (req, res) => {
     return res.status(401).json({ message: "Missing Request Body" });
   }
 
-  const userData = JSON.parse(req.body);
+  const userData =
+    typeof req.body === 'string'
+      ? JSON.parse(req.body)
+      : req.body;
   const username = req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
 
   if (!username) {
