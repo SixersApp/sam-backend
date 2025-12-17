@@ -172,7 +172,7 @@ Resources:
           Properties:
             RestApiId: !Ref MyApi
             Path: /auth/createUser
-            Method: post
+            Method: put
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
