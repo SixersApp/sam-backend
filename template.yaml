@@ -787,7 +787,7 @@ Resources:
           Type: Api 
           Properties:
             RestApiId: !Ref MyApi
-            Path: /users/auth/profile
+            Path: /users/profile
             Method: get
     Metadata:
       # Manage esbuild properties
