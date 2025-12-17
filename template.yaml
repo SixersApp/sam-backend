@@ -783,18 +783,69 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /users/auth/signup
             Method: put
+            Auth:
+              Authorizer: CognitoAuthorizer
         GetUserProfile:
           Type: Api 
           Properties:
             RestApiId: !Ref MyApi
             Path: /users/profile
             Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
         UpdateUserProfile:
           Type: Api 
           Properties:
             RestApiId: !Ref MyApi
             Path: /users/profile
             Method: patch
+    Metadata:
+      # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+# ----------------------------------------------------------
+# Tournament Functions
+# ----------------------------------------------------------
+  TournamentDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig: 
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: tournaments-functions/
+      Handler: app.lambdaHandler
+      Events:
+        CreateUser:
+          Type: Api 
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tournaments/{tournamentId}
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
