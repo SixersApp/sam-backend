@@ -13,8 +13,13 @@
     "test": "npm run compile && npm run unit"
   },
   "dependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "cors": "^2.8.5",
     "esbuild": "^0.14.14",
-    "pg": "^8.16.3"
+    "express": "^5.2.1",
+    "pg": "^8.16.3",
+    "serverless-http": "^4.0.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.2.0",
