@@ -137,7 +137,7 @@ app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
 
       const result = await client.query(
         `
-        SELECT id
+        SELECT id, start_year, end_year
         FROM irldata.season
         WHERE tournament_id = $1
         ORDER BY start_year;
