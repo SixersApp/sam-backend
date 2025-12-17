@@ -789,6 +789,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /users/profile
             Method: get
+        UpdateUserProfile:
+          Type: Api 
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /users/profile
+            Method: patch
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
