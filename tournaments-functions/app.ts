@@ -148,9 +148,11 @@ app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
 
       return res.status(200).json({
         tournamentId,
-        season_ids: result.rows.map(r => r.id),
-        start_years: result.rows.map(r => r.start_year),
-        end_years: result.rows.map(r => r.end_year)
+        seasons: result.rows.map(row => ({
+          id: row.id,
+          start_year: row.start_year,
+          end_year: row.end_year
+        }))
       });
 
     } catch (err) {
