@@ -783,16 +783,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /users/auth/signup
             Method: put
-            Auth:
-              Authorizer: CognitoAuthorizer
         GetUserProfile:
           Type: Api 
           Properties:
             RestApiId: !Ref MyApi
             Path: /users/profile
             Method: get
-            Auth:
-              Authorizer: CognitoAuthorizer
         UpdateUserProfile:
           Type: Api 
           Properties:
@@ -844,8 +840,6 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /tournaments/{tournamentId}
             Method: get
-            Auth:
-              Authorizer: CognitoAuthorizer
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild

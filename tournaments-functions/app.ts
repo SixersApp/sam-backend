@@ -105,3 +105,74 @@ app.get("/tournaments/:tournamentId", async (req, res) => {
     client?.release();
   }
 });
+
+/* =======================================================================================
+   GET SEASONS FOR TOURNAMENT BY YEAR RANGE
+   GET /tournaments/:tournamentId/seasons/:startYear/:endYear
+   ======================================================================================= */
+app.get(
+  "/tournaments/:tournamentId/seasons",
+  async (req, res) => {
+
+    const { tournamentId} = req.params;
+
+    const tokenUserId =
+      req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+    // --------------------------
+    // AUTH / VALIDATION
+
+    if (!tokenUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!tournamentId) {
+      return res.status(400).json({
+        message: "Missing path parameters"
+      });
+    }
+
+    let client;
+
+    try {
+      const pool = getPool();
+      client = await pool.connect();
+
+      const result = await client.query(
+        `
+        SELECT id
+        FROM irldata.season
+        WHERE tournament_id = $1
+        ORDER BY start_year;
+        `,
+        [tournamentId]
+      );
+
+      return res.status(200).json({
+        tournamentId,
+        season_ids: result.rows.map(r => r.id)
+      });
+
+    } catch (err) {
+      console.error(
+        "GET /tournaments/:tournamentId/seasons/:startYear/:endYear failed:",
+        err
+      );
+      return res.status(500).json({
+        message: "Internal server error"
+      });
+    } finally {
+      client?.release();
+    }
+  }
+);
+
+/* =======================================================================================
+   EXPORT LAMBDA HANDLER
+   ======================================================================================= */
+export const lambdaHandler = serverless(app, {
+  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
+    req.lambdaEvent = event;
+    req.lambdaContext = context;
+  }
+});
