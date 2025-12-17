@@ -1,9 +1,25 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import pg from 'pg';
-import fs from 'fs';
+import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import pg from "pg";
+import fs from "fs";
+import express from "express";
+import serverless from "serverless-http";
+import cors from "cors";
+
+/**
+ * Extend Express Request to include Lambda event/context
+ */
+declare global {
+  namespace Express {
+    interface Request {
+      lambdaEvent: APIGatewayProxyEvent;
+      lambdaContext: Context;
+    }
+  }
+}
 
 const getPool = (): pg.Pool => {
   const rdsCa = fs.readFileSync('/opt/nodejs/us-west-2-bundle.pem').toString();
+
   return new pg.Pool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -19,28 +35,26 @@ const getPool = (): pg.Pool => {
   });
 };
 
-export const lambdaHandler = async (
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> => {
-  if (!event.body) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Missing request body' })
-    };
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+/* =======================================================================================
+   CREATE OR UPDATE USER AUTH AND DEFAULT PROFILE DATA
+   ======================================================================================= */
+app.put("/auth/signup", async (req, res) => {
+  if (!req.body) {
+    return res.status(401).json({ message: "Missing Request Body" });
   }
 
-  const userData = JSON.parse(event.body);
-  const username =
-    event.requestContext.authorizer?.claims?.['cognito:username'];
+  const userData = JSON.parse(req.body);
+  const username = req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
 
   if (!username) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ error: 'Unauthorized' })
-    };
+    return res.status(401).json({ message: "Unauthorized" });
   }
 
-  let client: pg.PoolClient | undefined;
+  let client;
 
   try {
     const pool = getPool();
@@ -108,5 +122,15 @@ export const lambdaHandler = async (
   } finally {
     client?.release();
   }
-};
+});
 
+
+/* =======================================================================================
+   EXPORT LAMBDA HANDLER
+   ======================================================================================= */
+export const lambdaHandler = serverless(app, {
+  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
+    req.lambdaEvent = event;
+    req.lambdaContext = context;
+  }
+});
