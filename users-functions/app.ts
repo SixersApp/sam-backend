@@ -105,23 +105,12 @@ app.put("/auth/signup", async (req, res) => {
 
     await client.query('COMMIT');
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-        userId: username
-      })
-    };
+    return res.status(200).json({ message: "User profile created/updated successfully", userId: username });
   } catch (err) {
     console.error('PUT /profile failed:', err);
     await client?.query('ROLLBACK');
 
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: 'Internal server error'
-      })
-    };
+    return res.status(500).json({ message: "Internal server error" });
   } finally {
     client?.release();
   }
