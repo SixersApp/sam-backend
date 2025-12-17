@@ -44,13 +44,11 @@ app.use(express.json());
    ======================================================================================= */
 app.put("/auth/signup", async (req, res) => {
   if (!req.body) {
-    return res.status(401).json({ message: "Missing Request Body" });
+    return res.status(400).json({ message: "Missing request body" });
   }
 
-  const userData =
-    typeof req.body === 'string'
-      ? JSON.parse(req.body)
-      : req.body;
+  const userData = req.body;
+  
   const username = req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
 
   if (!username) {
@@ -120,6 +118,7 @@ app.put("/auth/signup", async (req, res) => {
 /* =======================================================================================
    EXPORT LAMBDA HANDLER
    ======================================================================================= */
+
 export const lambdaHandler = serverless(app, {
   request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
     req.lambdaEvent = event;
