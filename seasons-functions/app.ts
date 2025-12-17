@@ -63,8 +63,8 @@ app.get("/seasons/:seasonId", async (req, res) => {
 
     const result = await client.query(
       `
-      SELECT id, tournament_id, name, start_date, end_date
-      FROM seasons.season
+      SELECT id, tournament_id, start_year, end_year
+      FROM irldata.season
       WHERE id = $1
       LIMIT 1;
       `,
@@ -76,9 +76,6 @@ app.get("/seasons/:seasonId", async (req, res) => {
         message: "No rows were found that matched this season"
       });
     }
-
-    // --------------------------
-    // TOURNAMENT ACCESS CHECK
 
     return res.status(200).json(result.rows[0]);
 
