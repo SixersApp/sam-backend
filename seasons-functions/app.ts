@@ -63,23 +63,10 @@ app.get("/seasons/:seasonId", async (req, res) => {
 
     const result = await client.query(
       `
-      WITH season_teams AS (
-        SELECT DISTINCT t.*
-        FROM irldata.player_season_info psi
-        JOIN irldata.team t ON psi.team_id = t.id
-        WHERE psi.season_id = $1
-      ),
-      season_matches AS (
-        SELECT m.*
-        FROM irldata.match_info m
-        WHERE m.season_id = $1
-      )
-      SELECT 
-        s.*,
-        (SELECT COALESCE(json_agg(season_teams.*), '[]') FROM season_teams) AS teams,
-        (SELECT COALESCE(json_agg(season_matches.*), '[]') FROM season_matches) AS matches
-      FROM irldata.season s
-      WHERE s.id = $1;
+      SELECT id, tournament_id, name, start_date, end_date
+      FROM seasons.season
+      WHERE id = $1
+      LIMIT 1;
       `,
       [seasonId]
     );
