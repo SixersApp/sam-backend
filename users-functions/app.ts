@@ -115,10 +115,11 @@ app.put("/users/auth/signup", async (req, res) => {
 });
 
 /* =======================================================================================
-   UPDATE USER PROFILE DATA
+   GET USER PROFILE DATA
    ======================================================================================= */
 app.get("/users/profile", async (req, res) => {
-  const userId = req.lambdaEvent.pathParameters?.userid;
+  const userId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
 
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
