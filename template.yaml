@@ -573,46 +573,46 @@ Resources:
   # 4) GET FANTASY TEAM INSTANCE (teamId + matchNum)
   #     GET /fantasy-team-instance?teamId=<id>&matchNum=<num>
   # ----------------------------------------------------------
-  GetFantasyTeamInstanceFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: fantasy-team-instance-get/
-      Handler: app.lambdaHandler
-      Events:
-        GetFantasyTeamInstance:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /fantasy-team-instance
-            Method: get
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
+  # GetFantasyTeamInstanceFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     Runtime: nodejs22.x
+  #     Architectures:
+  #       - x86_64
+  #     VpcConfig:
+  #       SecurityGroupIds:
+  #         - !Ref LambdaSecurityGroupId
+  #       SubnetIds:
+  #         - !Ref PrivateSubnetOneId
+  #         - !Ref PrivateSubnetTwoId
+  #         - !Ref PrivateSubnetThreeId
+  #         - !Ref PrivateSubnetFourId
+  #     Environment:
+  #       Variables:
+  #         DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+  #         DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+  #         DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+  #         DB_PORT: 5432
+  #         DB_NAME: !Ref DbName
+  #     Layers:
+  #       - !Ref RdsCertLayer
+  #     CodeUri: fantasy-team-instance-get/
+  #     Handler: app.lambdaHandler
+  #     Events:
+  #       GetFantasyTeamInstance:
+  #         Type: Api
+  #         Properties:
+  #           RestApiId: !Ref MyApi
+  #           Path: /fantasy-team-instance
+  #           Method: get
+  #   Metadata:
+  #     BuildMethod: esbuild
+  #     BuildProperties:
+  #       Minify: true
+  #       Target: es2020
+  #       Sourcemap: true
+  #       EntryPoints:
+  #         - app.ts
   
   # GetMatchesFunction:
   #   Type: AWS::Serverless::Function
@@ -1015,6 +1015,51 @@ Resources:
           - app.ts
 
 # ----------------------------------------------------------
+# Fantasy Team Instance Functions
+# ----------------------------------------------------------
+  FantasyTeamInstancesDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      CodeUri: fantasy-team-instances-functions/
+      Handler: app.lambdaHandler
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      Events:
+        GetFantasyTeamInstance:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance
+            Method: get
+
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+# ----------------------------------------------------------
 # League Functions
 # ----------------------------------------------------------
   LeagueDataFunction:
@@ -1054,6 +1099,51 @@ Resources:
           Properties:
             RestApiId: !Ref MyApi
             Path: /leagues/{leagueId}
+            Method: get
+    Metadata:
+      # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+# ----------------------------------------------------------
+# Matchup Functions
+# ----------------------------------------------------------
+  MatchupDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig: 
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: matchups-functions/
+      Handler: app.lambdaHandler
+      Events:
+        GetUsersMatchups:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /matchups
             Method: get
     Metadata:
       # Manage esbuild properties
