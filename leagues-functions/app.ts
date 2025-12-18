@@ -168,6 +168,67 @@ app.get("/leagues/scoring-rules/:fantasyTeamId", async (req, res) => {
 });
 
 /* =======================================================================================
+   GET LEAGUE FOR A GIVEN LEAGUE ID
+   GET /leagues/:leagueId
+   ======================================================================================= */
+
+app.get("/leagues/:leagueId", async (req, res) => {
+  const userId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+  const { leagueId } = req.params;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!leagueId) {
+    return res.status(400).json({ message: "Missing leagueId" });
+  }
+
+  let client: pg.PoolClient | null = null;
+
+  try {
+    client = await getPool().connect();
+
+    const sql = `
+      SELECT DISTINCT
+        l.id,
+        l.name,
+        l.tournament_id,
+        l.season_id,
+        l.creator_id,
+        l.status,
+        l.max_teams,
+        l.join_code,
+        l.created_at
+      FROM fantasydata.leagues l
+      JOIN fantasydata.fantasy_teams ft
+        ON ft.league_id = l.id
+      WHERE l.id = $1
+        AND ft.user_id = $2
+      LIMIT 1;
+    `;
+
+    const result = await client.query(sql, [leagueId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: "League not found or access denied"
+      });
+    }
+
+    return res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error("GET /leagues/:leagueId failed:", err);
+    return res.status(500).json({
+      message: "Unexpected error occurred"
+    });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
    EXPORT LAMBDA HANDLER
    ======================================================================================= */
 

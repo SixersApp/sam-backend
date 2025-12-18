@@ -1049,11 +1049,11 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /leagues
             Method: get
-        GetLeagueScoringRules:
+        GetLeague:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
-            Path: /leagues/scoring-rules/{fantasyTeamId}
+            Path: /leagues/{leagueId}}
             Method: get
     Metadata:
       # Manage esbuild properties
