@@ -1053,7 +1053,7 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
-            Path: /leagues/{leagueId}}
+            Path: /leagues/{leagueId}
             Method: get
     Metadata:
       # Manage esbuild properties
