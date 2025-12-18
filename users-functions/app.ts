@@ -49,7 +49,7 @@ app.put("/users/auth/signup", async (req, res) => {
 
   const userData = req.body;
 
-  const username = req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
+  const username = req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:sub"];
 
   if (!username) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -131,7 +131,7 @@ app.put("/users/auth/signup", async (req, res) => {
    ======================================================================================= */
 app.get("/users/profile", async (req, res) => {
   const userId =
-    req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:username"];
+    req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:sub"];
 
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
