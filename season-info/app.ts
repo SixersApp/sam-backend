@@ -91,16 +91,6 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
             };
             return {
                 statusCode: 200,
-                headers: {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-
-                    // 2. What headers are allowed? (Must match client request)
-                    "Access-Control-Allow-Headers": "Content-Type,Authorization",
-
-                    // 3. What methods are allowed?
-                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-                },
                 body: JSON.stringify(result.rows[0])
             };
         }
