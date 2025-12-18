@@ -296,7 +296,7 @@ app.patch("/users/profile", async (req, res) => {
 
   } catch (err: any) {
     console.error("PATCH /users/profile failed:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: err.message });
   } finally {
     client?.release();
   }
