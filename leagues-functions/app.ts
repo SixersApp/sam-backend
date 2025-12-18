@@ -98,16 +98,17 @@ app.get("/leagues", async (req, res) => {
    GET /leagues/scoring-rules/:fantasyTeamInstanceId
    ======================================================================================= */
 
-app.get("/leagues/scoring-rules/:fantasyTeamInstanceId", async (req, res) => {
-  const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
-  const { fantasyTeamInstanceId } = req.params;
+app.get("/leagues/scoring-rules/:fantasyTeamId", async (req, res) => {
+  const userId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+  const { fantasyTeamId } = req.params;
 
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  if (!fantasyTeamInstanceId) {
-    return res.status(400).json({ message: "Missing fantasy team instance ID" });
+  if (!fantasyTeamId) {
+    return res.status(400).json({ message: "Missing fantasy team ID" });
   }
 
   let client: pg.PoolClient | null = null;
@@ -116,21 +117,15 @@ app.get("/leagues/scoring-rules/:fantasyTeamInstanceId", async (req, res) => {
     client = await getPool().connect();
 
     const sql = `
-      WITH fti AS (
-        SELECT id, fantasy_team_id
-        FROM fantasydata.fantasy_team_instance
-        WHERE id = $1
-      ),
-      team_and_league AS (
+      WITH team_and_league AS (
         SELECT 
-          fti.id AS fantasy_team_instance_id,
           ft.id AS fantasy_team_id,
           l.id AS league_id
-        FROM fti
-        JOIN fantasydata.fantasy_teams ft
-          ON ft.id = fti.fantasy_team_id
+        FROM fantasydata.fantasy_teams ft
         JOIN fantasydata.leagues l
           ON l.id = ft.league_id
+        WHERE ft.id = $1
+          AND ft.user_id = $2
       )
       SELECT 
         lsr.id,
@@ -150,11 +145,20 @@ app.get("/leagues/scoring-rules/:fantasyTeamInstanceId", async (req, res) => {
       ORDER BY lsr.category, lsr.stat;
     `;
 
-    const result = await client.query(sql, [fantasyTeamInstanceId]);
+    const result = await client.query(sql, [fantasyTeamId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: "Fantasy team not found or access denied"
+      });
+    }
 
     return res.status(200).json(result.rows);
   } catch (err) {
-    console.error("GET /scoringRules/:ftiId failed:", err);
+    console.error(
+      "GET /leagues/scoring-rules/:fantasyTeamId failed:",
+      err
+    );
     return res.status(500).json({
       message: "Unexpected error occurred",
     });
