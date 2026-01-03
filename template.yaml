@@ -140,6 +140,12 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts  
+
+
+# ----------------------------------------------------------
+# User Functions
+# ----------------------------------------------------------
+
   UserDataFunction:
     Type: AWS::Serverless::Function
     Properties:
