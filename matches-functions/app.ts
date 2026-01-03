@@ -59,42 +59,53 @@ app.get("/matches/feed", async (req, res) => {
 
     const sql = `
       SELECT 
-          m.id,
-          m.match_date,
-          m.tournament_id,
-          t.name AS tournament_name,
-          m.season_id,
-          m.venue_id,
-          m.home_team_id,
-          m.away_team_id,
-          m.home_team_score,
-          m.away_team_score,
-          m.home_team_wickets,
-          m.away_team_wickets,
-          m.home_team_balls,
-          m.away_team_balls,
-          m.dls,
-          m.status,
-          ht.name AS home_team_name,
-          ht.image AS home_team_image,
-          at.name AS away_team_name,
-          at.image AS away_team_image
-      FROM irldata.match_info m
-      JOIN irldata.team ht ON ht.id = m.home_team_id
-      JOIN irldata.team at ON at.id = m.away_team_id
-      JOIN irldata.tournament_info t ON t.id = m.tournament_id
-      WHERE m.tournament_id IN (
-          SELECT DISTINCT l.tournament_id
-          FROM fantasydata.fantasy_teams ft
-          JOIN fantasydata.leagues l
-            ON l.id = ft.league_id
-          WHERE ft.user_id = $1
-      )
-      AND m.match_date >= NOW()::date
-      ORDER BY 
-          CASE WHEN m.status = 'Live' THEN 0 ELSE 1 END,
-          m.match_date ASC
-      LIMIT 20;
+    json_build_object(
+        'tournament_id', t.id,
+        'tournament_name', t.name,
+        'abbreviation', t.abbreviation,
+        'matches', COALESCE(
+            (
+                SELECT json_agg(
+                    json_build_object(
+                        'id', m.id,
+                        'match_date', m.match_date,
+                        'season_id', m.season_id,
+                        'venue_id', m.venue_id,
+                        'home_team_id', m.home_team_id,
+                        'away_team_id', m.away_team_id,
+                        'home_team_score', m.home_team_score,
+                        'away_team_score', m.away_team_score,
+                        'home_team_wickets', m.home_team_wickets,
+                        'away_team_wickets', m.away_team_wickets,
+                        'home_team_balls', m.home_team_balls,
+                        'away_team_balls', m.away_team_balls,
+                        'dls', m.dls,
+                        'status', m.status,
+                        'home_team_name', ht.name,
+                        'home_team_image', ht.image,
+                        'away_team_name', at.name,
+                        'away_team_image', at.image
+                    ) ORDER BY 
+                        CASE WHEN m.status = 'Live' THEN 0 ELSE 1 END,
+                        m.match_date ASC
+                )
+                FROM irldata.match_info m
+                JOIN irldata.team ht ON ht.id = m.home_team_id
+                JOIN irldata.team at ON at.id = m.away_team_id
+                WHERE m.tournament_id = t.id -- Correlate to the outer tournament
+                AND m.match_date >= NOW()
+                AND m.match_date <= NOW() + INTERVAL '1 week'
+            ), 
+            '[]'::json -- Return an empty array if no matches found
+        )
+    ) AS tournament_data
+FROM irldata.tournament_info t
+WHERE t.id IN (
+    SELECT DISTINCT l.tournament_id
+    FROM fantasydata.fantasy_teams ft
+    JOIN fantasydata.leagues l ON l.id = ft.league_id
+    WHERE ft.user_id = $1
+);
     `;
 
     const result = await client.query(sql, [userId]);
@@ -102,7 +113,7 @@ app.get("/matches/feed", async (req, res) => {
     return res.status(200).json(result.rows);
 
   } catch (err) {
-    console.error("GET /matches/homeFeed failed:", err);
+    console.error("GET /matches/feed failed:", err);
     return res.status(500).json({ message: "Unexpected error occurred" });
   } finally {
     client?.release();

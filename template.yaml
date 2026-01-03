@@ -110,7 +110,7 @@ Resources:
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
-      CodeUri: match-scoring/
+      CodeUri: match-scoring-functions/
       Handler: app.lambdaHandler
       Events:
         CreateMatch:
@@ -140,622 +140,6 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts  
-
-  CreateFantasyUserFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: auth-create-user/
-      Handler: app.lambdaHandler
-      Events:
-        CreateUser:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /auth/createUser
-            Method: put
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts  
-
-  SeasonInfoFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: season-info/
-      Handler: app.lambdaHandler
-      Events:
-        SeasonInfo:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /season/{seasonId}
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts  
-
-  TournamentInfoFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: tournament-info/
-      Handler: app.lambdaHandler
-      Events:
-        TournamentInfo:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /tournament/{tournamentId}
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts 
-
-  UpdateProfileDataFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: update-profile-info/
-      Handler: app.lambdaHandler
-      Events:
-        UpdateProfile:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /profile/{userid}
-            Method: put
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts  
-
-  GetProfileDataFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: get-profile-info/
-      Handler: app.lambdaHandler
-      Events:
-        UpdateProfile:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /profile/{userid}
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts  
-
-  GetMatchupsFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: matchups-get/
-      Handler: app.lambdaHandler
-      Events:
-        GetMatchups:
-          Type: Api 
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /matchups/match_num
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
-  
-  GetLeaguesFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: leagues-get/
-      Handler: app.lambdaHandler
-      Events:
-        GetLeagues:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /leagues
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
-  #   # ----------------------------------------------------------
-  # # 1) GET ALL FANTASY TEAMS FOR USER
-  # #     GET /fantasy-teams?userId=<userId>
-  # # ----------------------------------------------------------
-  # GetFantasyTeamsForUserFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Runtime: nodejs22.x
-  #     Architectures:
-  #       - x86_64
-  #     VpcConfig:
-  #       SecurityGroupIds:
-  #         - !Ref LambdaSecurityGroupId
-  #       SubnetIds:
-  #         - !Ref PrivateSubnetOneId
-  #         - !Ref PrivateSubnetTwoId
-  #         - !Ref PrivateSubnetThreeId
-  #         - !Ref PrivateSubnetFourId
-  #     Environment:
-  #       Variables:
-  #         DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-  #         DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-  #         DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-  #         DB_PORT: 5432
-  #         DB_NAME: !Ref DbName
-  #     Layers:
-  #       - !Ref RdsCertLayer
-  #     CodeUri: fantasy-teams-get/
-  #     Handler: app.lambdaHandler
-  #     Events:
-  #       GetFantasyTeamsForUser:
-  #         Type: Api
-  #         Properties:
-  #           RestApiId: !Ref MyApi
-  #           Path: /fantasy-teams
-  #           Method: get
-  #   Metadata:
-  #     BuildMethod: esbuild
-  #     BuildProperties:
-  #       Minify: true
-  #       Target: es2020
-  #       Sourcemap: true
-  #       EntryPoints:
-  #         - app.ts
-
-  # # ----------------------------------------------------------
-  # # 2) GET USER'S FANTASY TEAM IN A LEAGUE
-  # #     GET /user-fantasy-team/by-league?leagueId=<leagueId>
-  # # ----------------------------------------------------------
-  # GetUserFantasyTeamInLeagueFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Runtime: nodejs22.x
-  #     Architectures:
-  #       - x86_64
-  #     VpcConfig:
-  #       SecurityGroupIds:
-  #         - !Ref LambdaSecurityGroupId
-  #       SubnetIds:
-  #         - !Ref PrivateSubnetOneId
-  #         - !Ref PrivateSubnetTwoId
-  #         - !Ref PrivateSubnetThreeId
-  #         - !Ref PrivateSubnetFourId
-  #     Environment:
-  #       Variables:
-  #         DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-  #         DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-  #         DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-  #         DB_PORT: 5432
-  #         DB_NAME: !Ref DbName
-  #     Layers:
-  #       - !Ref RdsCertLayer
-  #     CodeUri: fantasy-team-by-league/
-  #     Handler: app.lambdaHandler
-  #     Events:
-  #       GetUserFantasyTeamInLeague:
-  #         Type: Api
-  #         Properties:
-  #           RestApiId: !Ref MyApi
-  #           Path: /user-fantasy-team/by-league
-  #           Method: get
-  #   Metadata:
-  #     BuildMethod: esbuild
-  #     BuildProperties:
-  #       Minify: true
-  #       Target: es2020
-  #       Sourcemap: true
-  #       EntryPoints:
-  #         - app.ts
-
-  # # ----------------------------------------------------------
-  # # 3) GET ALL FANTASY TEAMS IN A LEAGUE
-  # #     GET /fantasy-teams/in-league?leagueId=<leagueId>
-  # # ----------------------------------------------------------
-  # GetFantasyTeamsInLeagueFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Runtime: nodejs22.x
-  #     Architectures:
-  #       - x86_64
-  #     VpcConfig:
-  #       SecurityGroupIds:
-  #         - !Ref LambdaSecurityGroupId
-  #       SubnetIds:
-  #         - !Ref PrivateSubnetOneId
-  #         - !Ref PrivateSubnetTwoId
-  #         - !Ref PrivateSubnetThreeId
-  #         - !Ref PrivateSubnetFourId
-  #     Environment:
-  #       Variables:
-  #         DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-  #         DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-  #         DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-  #         DB_PORT: 5432
-  #         DB_NAME: !Ref DbName
-  #     Layers:
-  #       - !Ref RdsCertLayer
-  #     CodeUri: fantasy-teams-in-league/
-  #     Handler: app.lambdaHandler
-  #     Events:
-  #       GetFantasyTeamsInLeague:
-  #         Type: Api
-  #         Properties:
-  #           RestApiId: !Ref MyApi
-  #           Path: /fantasy-teams/in-league
-  #           Method: get
-  #   Metadata:
-  #     BuildMethod: esbuild
-  #     BuildProperties:
-  #       Minify: true
-  #       Target: es2020
-  #       Sourcemap: true
-  #       EntryPoints:
-  #         - app.ts
-
-  # ----------------------------------------------------------
-  # 4) GET FANTASY TEAM INSTANCE (teamId + matchNum)
-  #     GET /fantasy-team-instance?teamId=<id>&matchNum=<num>
-  # ----------------------------------------------------------
-  GetFantasyTeamInstanceFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: fantasy-team-instance-get/
-      Handler: app.lambdaHandler
-      Events:
-        GetFantasyTeamInstance:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /fantasy-team-instance
-            Method: get
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
-  
-  # GetMatchesFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Runtime: nodejs22.x
-  #     Architectures:
-  #       - x86_64
-  #     VpcConfig: 
-  #       SecurityGroupIds:
-  #         - !Ref LambdaSecurityGroupId
-  #       SubnetIds:
-  #         - !Ref PrivateSubnetOneId
-  #         - !Ref PrivateSubnetTwoId
-  #         - !Ref PrivateSubnetThreeId
-  #         - !Ref PrivateSubnetFourId
-  #     Environment:
-  #       Variables:
-  #         DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-  #         DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-  #         DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-  #         DB_PORT: 5432
-  #         DB_NAME: !Ref DbName
-  #     Layers:
-  #       - !Ref RdsCertLayer
-  #     CodeUri: matches-get/
-  #     Handler: app.lambdaHandler
-  #     Events:
-  #       GetHomeFeedMatches:
-  #         Type: Api 
-  #         Properties:
-  #           RestApiId: !Ref MyApi
-  #           Path: /matches/homeFeed
-  #           Method: get
-  #       GetSpecificMatch:
-  #         Type: Api
-  #         Properties:
-  #           RestApiId: !Ref MyApi
-  #           Path: /matches/{matchId}
-  #           Method: get
-  #   Metadata:
-  #     # Manage esbuild properties
-  #     BuildMethod: esbuild
-  #     BuildProperties:
-  #       Minify: true
-  #       Target: es2020
-  #       Sourcemap: true
-  #       EntryPoints:
-  #         - app.ts
-
-
-  GetFantasyTeamInstancePerformancesFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: fantasy-team-instance-get-performances/
-      Handler: app.lambdaHandler
-      Events:
-        GetHomeFeedMatches:
-          Type: Api 
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /fantasyTeamInstance/{ftiId}/performances
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
-
-  GetLeagueScoringRulesFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig: 
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: league-scoring-rules-get/
-      Handler: app.lambdaHandler
-      Events:
-        GetHomeFeedMatches:
-          Type: Api 
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /scoringRules/{ftiId}
-            Method: get
-    Metadata:
-      # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
-
-
-
-
-
-
-
-# ----------------------------------------------------------
-# User Functions
-# ----------------------------------------------------------
   UserDataFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -809,7 +193,6 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-
 # ----------------------------------------------------------
 # Tournament Functions
 # ----------------------------------------------------------
@@ -860,7 +243,6 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-
 # ----------------------------------------------------------
 # Season Functions
 # ----------------------------------------------------------
@@ -905,7 +287,6 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-
 # ----------------------------------------------------------
 # Match Functions
 # ----------------------------------------------------------
@@ -956,7 +337,6 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-
 # ----------------------------------------------------------
 # Fantasy Team Functions
 # ----------------------------------------------------------
@@ -1003,6 +383,116 @@ Resources:
           Properties:
             RestApiId: !Ref MyApi
             Path: /fantasy-teams/{fantasyTeamId}
+            Method: get
+    Metadata:
+      # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+# ----------------------------------------------------------
+# League Functions
+# ----------------------------------------------------------
+  LeagueDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig: 
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: league-functions/
+      Handler: app.lambdaHandler
+      Events:
+        GetUserLeagues:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues
+            Method: get
+        GetLeagueById:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/{leagueId}
+            Method: get
+        GetDefaultScoringRules:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/scoring-rules
+            Method: get
+        GetScoringRules:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/{leagueId}/scoring-rules
+            Method: get
+    Metadata:
+      # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+
+  MatchupDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig: 
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: matchup-functions/
+      Handler: app.lambdaHandler
+      Events:
+        GetMatchupById:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /matchups/{matchUpId}
+            Method: get
+        GetMatchUpFeed:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /matchups/feed
             Method: get
     Metadata:
       # Manage esbuild properties

@@ -61,16 +61,18 @@ app.get("/fantasy-teams/user", async (req, res) => {
 
     const sql = leagueId
       ? `
-        SELECT *
-        FROM fantasydata.fantasy_teams
-        WHERE user_id = $1 AND league_id = $2
-        ORDER BY created_at ASC;
+        SELECT ft.*, p.full_name AS user_name
+        FROM fantasydata.fantasy_teams ft
+        JOIN authdata.profiles p ON p.user_id = ft.user_id
+        WHERE ft.user_id = $1 AND ft.league_id = $2
+        ORDER BY ft.created_at ASC;
         `
       : `
-        SELECT *
-        FROM fantasydata.fantasy_teams
-        WHERE user_id = $1
-        ORDER BY created_at ASC;
+        SELECT ft.*, p.full_name AS user_name
+        FROM fantasydata.fantasy_teams ft
+        JOIN authdata.profiles p ON p.user_id = ft.user_id
+        WHERE ft.user_id = $1
+        ORDER BY ft.created_at ASC;
         `;
 
     const values = leagueId ? [userId, leagueId] : [userId];

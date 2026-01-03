@@ -131,7 +131,9 @@ app.put("/users/auth/signup", async (req, res) => {
    ======================================================================================= */
 app.get("/users/profile", async (req, res) => {
   const userId =
-    req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:sub"];
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  console.log("\n\n\n\n", userId, "\n\n\n\n");
 
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
