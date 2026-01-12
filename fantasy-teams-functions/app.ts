@@ -1,50 +1,13 @@
-import { APIGatewayProxyEvent, Context } from "aws-lambda";
-import pg from "pg";
-import fs from "fs";
-import express from "express";
-import serverless from "serverless-http";
-import cors from "cors";
+import { getPool, createApp, createHandler, Request, Response } from "/opt/nodejs/index";
 
-/**
- * Extend Express Request to include Lambda event/context
- */
-declare global {
-  namespace Express {
-    interface Request {
-      lambdaEvent: APIGatewayProxyEvent;
-      lambdaContext: Context;
-    }
-  }
-}
-
-const getPool = (): pg.Pool => {
-  const rdsCa = fs.readFileSync("/opt/nodejs/us-west-2-bundle.pem").toString();
-
-  return new pg.Pool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-    ssl: {
-      rejectUnauthorized: true,
-      ca: rdsCa
-    }
-  });
-};
-
-const app = express();
-app.use(cors());
-app.use(express.json());
+const app = createApp();
 
 /* =======================================================================================
    GET FANTASY TEAMS FOR USER
    GET /fantasy-teams/user
    GET /fantasy-teams/user?leagueId=<leagueId>
    ======================================================================================= */
-app.get("/fantasy-teams/user", async (req, res) => {
+app.get("/fantasy-teams/user", async (req: Request, res: Response) => {
   const userId =
     req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
   const leagueId = req.query.leagueId as string | undefined;
@@ -61,16 +24,18 @@ app.get("/fantasy-teams/user", async (req, res) => {
 
     const sql = leagueId
       ? `
-        SELECT *
-        FROM fantasydata.fantasy_teams
-        WHERE user_id = $1 AND league_id = $2
-        ORDER BY created_at ASC;
+        SELECT ft.*, p.full_name AS user_name
+        FROM fantasydata.fantasy_teams ft
+        JOIN authdata.profiles p ON p.user_id = ft.user_id
+        WHERE ft.user_id = $1 AND ft.league_id = $2
+        ORDER BY ft.created_at ASC;
         `
       : `
-        SELECT *
-        FROM fantasydata.fantasy_teams
-        WHERE user_id = $1
-        ORDER BY created_at ASC;
+        SELECT ft.*, p.full_name AS user_name
+        FROM fantasydata.fantasy_teams ft
+        JOIN authdata.profiles p ON p.user_id = ft.user_id
+        WHERE ft.user_id = $1
+        ORDER BY ft.created_at ASC;
         `;
 
     const values = leagueId ? [userId, leagueId] : [userId];
@@ -91,7 +56,7 @@ app.get("/fantasy-teams/user", async (req, res) => {
    GET ALL FANTASY TEAMS IN A LEAGUE
    GET /fantasy-teams?leagueId=<leagueId>
    ======================================================================================= */
-app.get("/fantasy-teams", async (req, res) => {
+app.get("/fantasy-teams", async (req: Request, res: Response) => {
   const leagueId = req.query.leagueId as string | undefined;
   const userId =
     req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
@@ -134,7 +99,7 @@ app.get("/fantasy-teams", async (req, res) => {
    GET FANTASY TEAM BY ID (OWNERSHIP REQUIRED)
    GET /fantasy-teams/:fantasyTeamId
    ======================================================================================= */
-app.get("/fantasy-teams/:fantasyTeamId", async (req, res) => {
+app.get("/fantasy-teams/:fantasyTeamId", async (req: Request, res: Response) => {
   const { fantasyTeamId } = req.params;
 
   const userId =
@@ -185,12 +150,4 @@ app.get("/fantasy-teams/:fantasyTeamId", async (req, res) => {
   }
 });
 
-/* =======================================================================================
-   EXPORT LAMBDA HANDLER
-   ======================================================================================= */
-export const lambdaHandler = serverless(app, {
-  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
-    req.lambdaEvent = event;
-    req.lambdaContext = context;
-  }
-});
+export const lambdaHandler = createHandler(app);

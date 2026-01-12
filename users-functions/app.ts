@@ -1,48 +1,11 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import pg from "pg";
-import fs from "fs";
-import express from "express";
-import serverless from "serverless-http";
-import cors from "cors";
+import { getPool, createApp, createHandler, Request, Response } from "/opt/nodejs/index";
 
-/**
- * Extend Express Request to include Lambda event/context
- */
-declare global {
-  namespace Express {
-    interface Request {
-      lambdaEvent: APIGatewayProxyEvent;
-      lambdaContext: Context;
-    }
-  }
-}
-
-const getPool = (): pg.Pool => {
-  const rdsCa = fs.readFileSync('/opt/nodejs/us-west-2-bundle.pem').toString();
-
-  return new pg.Pool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-    ssl: {
-      rejectUnauthorized: true,
-      ca: rdsCa
-    }
-  });
-};
-
-const app = express();
-app.use(cors());
-app.use(express.json());
+const app = createApp();
 
 /* =======================================================================================
    CREATE OR UPDATE USER AUTH AND DEFAULT PROFILE DATA
    ======================================================================================= */
-app.put("/users/auth/signup", async (req, res) => {
+app.put("/users/auth/signup", async (req: Request, res: Response) => {
   if (!req.body) {
     return res.status(400).json({ message: "Missing request body" });
   }
@@ -129,9 +92,11 @@ app.put("/users/auth/signup", async (req, res) => {
 /* =======================================================================================
    GET USER PROFILE DATA
    ======================================================================================= */
-app.get("/users/profile", async (req, res) => {
+app.get("/users/profile", async (req: Request, res: Response) => {
   const userId =
-    req.lambdaEvent.requestContext.authorizer?.claims?.["cognito:sub"];
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  console.log("\n\n\n\n", userId, "\n\n\n\n");
 
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -144,7 +109,7 @@ app.get("/users/profile", async (req, res) => {
       client = await pool.connect();
 
       const result = await client.query(
-          `SELECT 
+          `SELECT
               user_id,
               full_name,
               country,
@@ -177,16 +142,13 @@ app.get("/users/profile", async (req, res) => {
 /* =======================================================================================
    PATCH USER PROFILE (PARTIAL UPDATE)
    ======================================================================================= */
-app.patch("/users/profile", async (req, res) => {
+app.patch("/users/profile", async (req: Request, res: Response) => {
   const tokenUserId =
     req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
 
   if (!tokenUserId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-
-  // --------------------------
-  // PARSE BODY
 
   const body = req.body ?? {};
 
@@ -197,9 +159,6 @@ app.patch("/users/profile", async (req, res) => {
     onboarding_stage,
     experience
   } = body;
-
-  // --------------------------
-  // VALIDATE PROVIDED FIELDS
 
   if (
     full_name === undefined &&
@@ -247,9 +206,6 @@ app.patch("/users/profile", async (req, res) => {
     }
     experience = Math.floor(experience);
   }
-
-  // --------------------------
-  // BUILD DYNAMIC UPSERT QUERY
 
   const updates: string[] = [];
   const columns = ["user_id"];
@@ -302,14 +258,4 @@ app.patch("/users/profile", async (req, res) => {
   }
 });
 
-
-/* =======================================================================================
-   EXPORT LAMBDA HANDLER
-   ======================================================================================= */
-
-export const lambdaHandler = serverless(app, {
-  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
-    req.lambdaEvent = event;
-    req.lambdaContext = context;
-  }
-});
+export const lambdaHandler = createHandler(app);
