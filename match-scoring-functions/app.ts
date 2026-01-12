@@ -1,55 +1,8 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
-import pg, { PoolClient } from 'pg';
-import fs from 'fs';
-import express from "express";
-import serverless from "serverless-http";
-import cors from "cors";
-/**
- *
- * Event doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-input-format
- * @param {Object} event - API Gateway Lambda Proxy Input Format
- *
- * Return doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
- * @returns {Object} object - API Gateway Lambda Proxy Output Format
- *
- */
+import { getPool, createApp, createHandler, Request, Response } from "/opt/nodejs/index";
 
-declare global {
-  namespace Express {
-    interface Request {
-      lambdaEvent: APIGatewayProxyEvent;
-      lambdaContext: Context;
-    }
-  }
-}
+const app = createApp();
 
-const getPool = (): pg.Pool => {
-  const rdsCa = fs.readFileSync('/opt/nodejs/us-west-2-bundle.pem').toString();
-  return new pg.Pool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-
-    // --- 👇 ADD THIS LINE ---
-    // This forces an encrypted connection without needing the CA file.
-    ssl: {
-      rejectUnauthorized: true,
-      ca: rdsCa
-    }
-  });
-}
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-
-app.post("/scoring/createMatch", async (req, res) => {
+app.post("/scoring/createMatch", async (req: Request, res: Response) => {
   const tournamentId = req.lambdaEvent.requestContext.authorizer?.claims?.["custom:tournamentId"];
   const match_data = JSON.parse(req.lambdaEvent.body ?? "{}");
 
@@ -75,18 +28,18 @@ app.post("/scoring/createMatch", async (req, res) => {
     client = await pool.connect();
     const tournamentInfo = (await client.query(`
       SELECT * FROM irldata.tournament_info t
-      WHERE t.id = $1; 
+      WHERE t.id = $1;
     `, [match_data.tournament_id])).rows[0];
     const seasonInfo = (await client.query(`
-      WITH season_teams 
+      WITH season_teams
       AS (
         SELECT DISTINCT t.*
         FROM irldata.player_season_info psi
         JOIN irldata.team t ON psi.team_id = t.id
         WHERE psi.season_id = $1
       )
-      SELECT 
-            s.*, 
+      SELECT
+            s.*,
           (SELECT COALESCE(json_agg(season_teams.*), '[]') FROM season_teams) as teams
       FROM irldata.season s
       WHERE s.id = $1;
@@ -96,7 +49,7 @@ app.post("/scoring/createMatch", async (req, res) => {
       SELECT t.* FROM irldata.team t WHERE t.id = $1;
     `, [match_data.away_team_id])).rows[0];
     const homeTeamInfo = (await client.query(`
-      SELECT t.* FROM irldata.team t WHERE t.id = $1;  
+      SELECT t.* FROM irldata.team t WHERE t.id = $1;
     `, [match_data.home_team_id])).rows[0];
 
     if (awayTeamInfo == undefined || homeTeamInfo == undefined) {
@@ -169,7 +122,7 @@ app.post("/scoring/createMatch", async (req, res) => {
   })
 });
 
-app.patch("/scoring/:matchId/startScoring", async (req, res) => {
+app.patch("/scoring/:matchId/startScoring", async (req: Request, res: Response) => {
   const tournamentId = req.lambdaEvent.requestContext.authorizer?.claims?.["custom:tournamentId"];
   const match_id = req.lambdaEvent.pathParameters?.matchId;
 
@@ -181,7 +134,7 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
 
     const matchInfo = (await client.query(`
       SELECT * FROM irldata.match_info m
-      WHERE m.id = $1;  
+      WHERE m.id = $1;
     `, [match_id])).rows[0];
 
     if (matchInfo == undefined) {
@@ -195,10 +148,10 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
     await client.query("BEGIN");
 
     const updated_match = (await client.query(`
-      UPDATE irldata.match_info 
+      UPDATE irldata.match_info
       SET status = $1
       WHERE id = $2
-      RETURNING *;  
+      RETURNING *;
     `, ['LIVE', match_id])).rows[0];
 
     await client.query(`
@@ -209,12 +162,12 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
         id, team_id, $1, NOW()
       FROM irldata.player_season_info
       WHERE season_id = $2 AND team_id IN ($3, $4)
-      ON CONFLICT (player_season_id, match_id) DO NOTHING;  
+      ON CONFLICT (player_season_id, match_id) DO NOTHING;
     `, [match_id, updated_match.season_id, updated_match.home_team_id, updated_match.away_team_id]);
 
     const match_data = (await client.query(`
-      SELECT 
-        m.*, 
+      SELECT
+        m.*,
         COALESCE(
           (
             SELECT jsonb_agg(
@@ -289,7 +242,7 @@ app.patch("/scoring/:matchId/startScoring", async (req, res) => {
 
 });
 
-app.post("/scoring/:matchId/addEvent", async (req, res) => {
+app.post("/scoring/:matchId/addEvent", async (req: Request, res: Response) => {
   const tournamentId = req.lambdaEvent.requestContext.authorizer?.claims?.["custom:tournamentId"];
   const match_id = req.lambdaEvent.pathParameters?.matchId;
   const ball_data = req.body;
@@ -381,44 +334,44 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
       const queryText = `
         WITH batter_update AS (
           UPDATE irldata.player_performance pp
-          SET 
+          SET
             runs_scored = COALESCE(runs_scored, 0) + $1,
             balls_faced = COALESCE(balls_faced, 0) + $2,
             sixes = COALESCE(sixes, 0) + $3,
             fours = COALESCE(fours, 0) + $8
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $4       
-            AND pp.match_id = $5       
+            AND psi.player_id = $4
+            AND pp.match_id = $5
         ),
         bowler_update AS (
           UPDATE irldata.player_performance pp
-          SET 
+          SET
             runs_conceded = COALESCE(runs_conceded, 0) + $1,
             balls_bowled = COALESCE(balls_bowled, 0) + $2
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $6       
-            AND pp.match_id = $5       
+            AND psi.player_id = $6
+            AND pp.match_id = $5
         )
         UPDATE irldata.match_info
-        SET 
-          home_team_score = CASE 
+        SET
+          home_team_score = CASE
             WHEN home_team_id = $7 THEN COALESCE(home_team_score, 0) + $1
-            ELSE home_team_score 
+            ELSE home_team_score
           END,
-          home_team_balls = CASE 
-            WHEN home_team_id = $7 THEN COALESCE(home_team_balls, 0) + $2 
-            ELSE home_team_balls 
+          home_team_balls = CASE
+            WHEN home_team_id = $7 THEN COALESCE(home_team_balls, 0) + $2
+            ELSE home_team_balls
           END,
-          
-          away_team_score = CASE 
-            WHEN away_team_id = $7 THEN COALESCE(away_team_score, 0) + $1 
-            ELSE away_team_score 
+
+          away_team_score = CASE
+            WHEN away_team_id = $7 THEN COALESCE(away_team_score, 0) + $1
+            ELSE away_team_score
           END,
-          away_team_balls = CASE 
-            WHEN away_team_id = $7 THEN COALESCE(away_team_balls, 0) + $2 
-            ELSE away_team_balls 
+          away_team_balls = CASE
+            WHEN away_team_id = $7 THEN COALESCE(away_team_balls, 0) + $2
+            ELSE away_team_balls
           END
         WHERE id = $5
         RETURNING *;
@@ -438,50 +391,50 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
       const queryText = `
         WITH batter_update AS (
           UPDATE irldata.player_performance pp
-          SET 
+          SET
             balls_faced = COALESCE(balls_faced, 0) + $1
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $3       
+            AND psi.player_id = $3
             AND pp.match_id = $2
         ),
         bowler_update AS (
           UPDATE irldata.player_performance pp
-          SET 
+          SET
             balls_bowled = COALESCE(balls_bowled, 0) + $1,
-            wickets_taken = COALESCE(wickets_taken, 0) + 1        
+            wickets_taken = COALESCE(wickets_taken, 0) + 1
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $4       
+            AND psi.player_id = $4
             AND pp.match_id = $2
         ),
         fielder_update AS (
           UPDATE irldata.player_performance pp
-          SET 
-            catches = COALESCE(catches, 0) + 1       
+          SET
+            catches = COALESCE(catches, 0) + 1
           FROM irldata.player_season_info psi
           WHERE pp.player_season_id = psi.id
-            AND psi.player_id = $5      
+            AND psi.player_id = $5
             AND pp.match_id = $2
         )
         UPDATE irldata.match_info
-        SET 
-          home_team_balls = CASE 
-            WHEN home_team_id = $6 THEN COALESCE(home_team_balls, 0) + 1 
-            ELSE home_team_balls 
+        SET
+          home_team_balls = CASE
+            WHEN home_team_id = $6 THEN COALESCE(home_team_balls, 0) + 1
+            ELSE home_team_balls
           END,
-          home_team_wickets = CASE   
-            WHEN home_team_id = $6 THEN COALESCE(home_team_wickets, 0) + 1 
-            ELSE home_team_wickets 
+          home_team_wickets = CASE
+            WHEN home_team_id = $6 THEN COALESCE(home_team_wickets, 0) + 1
+            ELSE home_team_wickets
           END,
-          
-          away_team_balls = CASE 
-            WHEN away_team_id = $6 THEN COALESCE(away_team_balls, 0) + 1 
-            ELSE away_team_balls 
+
+          away_team_balls = CASE
+            WHEN away_team_id = $6 THEN COALESCE(away_team_balls, 0) + 1
+            ELSE away_team_balls
           END,
-          away_team_wickets = CASE 
-            WHEN away_team_id = $6 THEN COALESCE(away_team_wickets, 0) + 1 
-            ELSE away_team_wickets 
+          away_team_wickets = CASE
+            WHEN away_team_id = $6 THEN COALESCE(away_team_wickets, 0) + 1
+            ELSE away_team_wickets
           END
         WHERE id = $2
         RETURNING *;
@@ -498,8 +451,8 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
     }
 
     const match_data = (await client.query(`
-      SELECT 
-        m.*, 
+      SELECT
+        m.*,
 
         COALESCE(
           (
@@ -574,9 +527,4 @@ app.post("/scoring/:matchId/addEvent", async (req, res) => {
 
 });
 
-export const lambdaHandler = serverless(app, {
-  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
-    req.lambdaEvent = event;
-    req.lambdaContext = context;
-  }
-});
+export const lambdaHandler = createHandler(app);

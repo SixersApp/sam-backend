@@ -1,49 +1,12 @@
-import { APIGatewayProxyEvent, Context } from "aws-lambda";
-import pg from "pg";
-import fs from "fs";
-import express from "express";
-import serverless from "serverless-http";
-import cors from "cors";
+import { getPool, createApp, createHandler, Request, Response } from "/opt/nodejs/index";
 
-/**
- * Extend Express Request to include Lambda event/context
- */
-declare global {
-  namespace Express {
-    interface Request {
-      lambdaEvent: APIGatewayProxyEvent;
-      lambdaContext: Context;
-    }
-  }
-}
-
-const getPool = (): pg.Pool => {
-  const rdsCa = fs.readFileSync("/opt/nodejs/us-west-2-bundle.pem").toString();
-
-  return new pg.Pool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-    ssl: {
-      rejectUnauthorized: true,
-      ca: rdsCa
-    }
-  });
-};
-
-const app = express();
-app.use(cors());
-app.use(express.json());
+const app = createApp();
 
 /* =======================================================================================
    GET ALL LIVE / UPCOMING MATCHES FOR USER (HOME FEED)
    GET /matches/feed
    ======================================================================================= */
-app.get("/matchups/feed", async (req, res) => {
+app.get("/matchups/feed", async (req: Request, res: Response) => {
   const userId =
     req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
 
@@ -58,11 +21,11 @@ app.get("/matchups/feed", async (req, res) => {
     client = await pool.connect();
 
     const sql = `
-      WITH 
+      WITH
 -- 1. User Teams
 user_teams AS (
-    SELECT id AS team_id 
-    FROM fantasydata.fantasy_teams 
+    SELECT id AS team_id
+    FROM fantasydata.fantasy_teams
     WHERE user_id = $1
 ),
 
@@ -79,7 +42,7 @@ target_matchup_ids AS (
 
 -- 3. Matchup context
 candidate_matchups AS (
-    SELECT 
+    SELECT
         m.id AS matchup_id,
         m.match_num,
         m.league_id,
@@ -98,7 +61,7 @@ candidate_matchups AS (
 
 -- 4. Unpivot team rosters
 team_rosters AS (
-    SELECT 
+    SELECT
         cm.matchup_id,
         cm.league_id,
         1 AS team_side,
@@ -117,7 +80,7 @@ team_rosters AS (
 
     UNION ALL
 
-    SELECT 
+    SELECT
         cm.matchup_id,
         cm.league_id,
         2 AS team_side,
@@ -163,7 +126,7 @@ valid_matchups AS (
     SELECT matchup_id
     FROM roster_match_status
     GROUP BY matchup_id
-    HAVING 
+    HAVING
         COUNT(*) FILTER (WHERE match_status = 'LIVE') > 0
         OR (
             COUNT(*) FILTER (WHERE match_status IN ('FINISHED','ABAN.')) > 0
@@ -180,7 +143,7 @@ league_rules AS (
 
 -- 8. Raw performances (can duplicate)
 resolved_performances AS (
-    SELECT 
+    SELECT
         tr.matchup_id,
         tr.league_id,
         tr.team_side,
@@ -199,7 +162,7 @@ resolved_performances AS (
        AND pp.player_season_id = rms.player_season_id
 ),
 
--- 🔥 9. HARD AGGREGATION BARRIER (THE FIX)
+-- 9. HARD AGGREGATION BARRIER (THE FIX)
 player_matchup_stats AS (
     SELECT
         matchup_id,
@@ -357,7 +320,7 @@ ORDER BY cm.matchup_id;
    GET SPECIFIC MATCH DETAILS
    GET /matches/:matchId
    ======================================================================================= */
-app.get("/matchups/:matchUpId", async (req, res) => {
+app.get("/matchups/:matchUpId", async (req: Request, res: Response) => {
   const userId =
     req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
   const { matchUpId } = req.params;
@@ -377,14 +340,14 @@ app.get("/matchups/:matchUpId", async (req, res) => {
     client = await pool.connect();
 
     const sql = `
-      WITH 
+      WITH
 -- 1. Context: Matchup + League Details + Team IDs
 match_ctx AS (
-    SELECT 
-        m.id AS matchup_id, 
+    SELECT
+        m.id AS matchup_id,
         m.match_num,
         m.league_id,
-        m.fantasy_team_instance1_id, 
+        m.fantasy_team_instance1_id,
         m.fantasy_team_instance2_id,
         ti1.fantasy_team_id AS fantasy_team1_id,
         ti2.fantasy_team_id AS fantasy_team2_id,
@@ -408,36 +371,36 @@ league_rules AS (
 -- 3. Unpivot Roster (Extracting PLAYER IDs)
 team_rosters AS (
     -- Instance 1
-    SELECT 
+    SELECT
         m.matchup_id,
         1 AS team_side,
         ti.id AS instance_id,
-        ti.captain AS captain_player_id, 
+        ti.captain AS captain_player_id,
         ti.vice_captain AS vice_captain_player_id,
         UNNEST(ARRAY[
-            bat1, bat2, bat3, bat4, 
-            bowl1, bowl2, bowl3, bowl4, 
-            all1, all2, all3, 
-            wicket1, wicket2, 
+            bat1, bat2, bat3, bat4,
+            bowl1, bowl2, bowl3, bowl4,
+            all1, all2, all3,
+            wicket1, wicket2,
             flex1, flex2
         ]) AS player_id
     FROM match_ctx m
     JOIN fantasydata.fantasy_team_instance ti ON ti.id = m.fantasy_team_instance1_id
-    
+
     UNION ALL
-    
+
     -- Instance 2
-    SELECT 
+    SELECT
         m.matchup_id,
         2 AS team_side,
         ti.id AS instance_id,
-        ti.captain AS captain_player_id, 
+        ti.captain AS captain_player_id,
         ti.vice_captain AS vice_captain_player_id,
         UNNEST(ARRAY[
-            bat1, bat2, bat3, bat4, 
-            bowl1, bowl2, bowl3, bowl4, 
-            all1, all2, all3, 
-            wicket1, wicket2, 
+            bat1, bat2, bat3, bat4,
+            bowl1, bowl2, bowl3, bowl4,
+            all1, all2, all3,
+            wicket1, wicket2,
             flex1, flex2
         ]) AS player_id
     FROM match_ctx m
@@ -446,7 +409,7 @@ team_rosters AS (
 
 -- 4. The "Bridge": Link Player IDs to the Correct Performance
 resolved_performances AS (
-    SELECT 
+    SELECT
         tr.matchup_id,
         tr.team_side,
         tr.instance_id,
@@ -455,33 +418,33 @@ resolved_performances AS (
         tr.vice_captain_player_id,
         pp.* -- Get all performance stats
     FROM team_rosters tr
-    CROSS JOIN match_ctx mc 
-    
+    CROSS JOIN match_ctx mc
+
     -- A. Get Player Season Info
-    JOIN irldata.player_season_info psi 
-        ON psi.player_id = tr.player_id 
-        AND psi.season_id = mc.season_id 
+    JOIN irldata.player_season_info psi
+        ON psi.player_id = tr.player_id
+        AND psi.season_id = mc.season_id
         AND psi.tournament_id = mc.tournament_id
-        
+
     -- B. Find the correct IRL Match Info
-    JOIN irldata.match_info mi 
+    JOIN irldata.match_info mi
         ON (
             (mi.home_team_id = psi.team_id AND mi.home_match_num = mc.match_num)
-            OR 
+            OR
             (mi.away_team_id = psi.team_id AND mi.away_match_num = mc.match_num)
         )
-        
+
     -- C. Get the Performance linked to that Match and Player Season
-    JOIN irldata.player_performance pp 
-        ON pp.match_id = mi.id 
+    JOIN irldata.player_performance pp
+        ON pp.match_id = mi.id
         AND pp.player_season_id = psi.id
-    
+
     WHERE tr.player_id IS NOT NULL
 ),
 
 -- 5. Calculate Derived Stats
 player_stats_calc AS (
-    SELECT 
+    SELECT
         rp.*,
         CASE WHEN rp.balls_faced > 0 THEN (rp.runs_scored * 100.0 / rp.balls_faced)::NUMERIC ELSE 0 END AS strike_rate,
         CASE WHEN rp.balls_bowled > 0 THEN (rp.runs_conceded / (rp.balls_bowled / 6.0))::NUMERIC ELSE 0 END AS economy
@@ -490,11 +453,11 @@ player_stats_calc AS (
 
 -- 6. Standard Scoring
 standard_points AS (
-    SELECT 
+    SELECT
         ps.player_id,
         ps.instance_id,
         SUM(
-            CASE 
+            CASE
                 -- Batting
                 WHEN r.stat = 'Points per run' THEN ps.runs_scored * r.per_unit_points
                 WHEN r.stat = 'Bonus per 4' THEN ps.fours * r.per_unit_points
@@ -502,18 +465,18 @@ standard_points AS (
                 WHEN r.stat = 'Bonus per half-century' AND ps.runs_scored >= 50 THEN r.flat_points
                 WHEN r.stat = 'Bonus per century' AND ps.runs_scored >= 100 THEN r.flat_points
                 WHEN r.stat = 'Duck-out Penalty' AND ps.runs_scored = 0 AND ps.balls_faced > 0 THEN r.flat_points
-                
+
                 -- Bowling
                 WHEN r.stat = 'Points per Wicket' THEN ps.wickets_taken * r.per_unit_points
                 WHEN r.stat = '3-Wicket Bonus' THEN FLOOR(ps.wickets_taken / 3.0) * r.per_unit_points
                 WHEN r.stat = '5-Wicket Bonus' THEN FLOOR(ps.wickets_taken / 5.0) * r.per_unit_points
-                
+
                 -- Fielding
                 WHEN r.stat = 'Points per catch' THEN ps.catches * r.per_unit_points
                 WHEN r.stat = '3-Catches bonus' THEN FLOOR(ps.catches / 3.0) * r.per_unit_points
                 WHEN r.stat = 'Run Out' THEN ps.run_outs * r.per_unit_points
                 WHEN r.stat = 'Dropped Catch' THEN ps.catches_dropped * r.per_unit_points
-                ELSE 0 
+                ELSE 0
             END
         ) AS total_std_points
     FROM player_stats_calc ps
@@ -524,36 +487,36 @@ standard_points AS (
 
 -- 7. Band Scoring
 band_points AS (
-    SELECT 
+    SELECT
         ps.player_id,
         ps.instance_id,
         SUM(r.flat_points) AS total_band_points
     FROM player_stats_calc ps
     JOIN league_rules r ON r.mode = 'band'
-    WHERE 
-        (r.stat = 'Strike Rate' AND ps.balls_faced > 0 AND r.band @> ps.strike_rate) 
-        OR 
+    WHERE
+        (r.stat = 'Strike Rate' AND ps.balls_faced > 0 AND r.band @> ps.strike_rate)
+        OR
         (r.stat = 'Economy' AND ps.balls_bowled > 0 AND r.band @> ps.economy)
     GROUP BY ps.player_id, ps.instance_id
 ),
 
 -- 8. Final Calculation per Player
 individual_scores AS (
-    SELECT 
-        ps.matchup_id, 
+    SELECT
+        ps.matchup_id,
         ps.team_side,
         ps.instance_id,
         ps.player_id,
-        
-        (COALESCE(sp.total_std_points, 0) + COALESCE(bp.total_band_points, 0)) 
-        
+
+        (COALESCE(sp.total_std_points, 0) + COALESCE(bp.total_band_points, 0))
+
         * COALESCE((
-            SELECT multiplier FROM league_rules 
+            SELECT multiplier FROM league_rules
             WHERE stat = 'Captaincy Multiplier' AND ps.player_id = ps.captain_player_id
         ), 1)
-        
+
         * COALESCE((
-            SELECT multiplier FROM league_rules 
+            SELECT multiplier FROM league_rules
             WHERE stat = 'Vice Captaincy Multiplier' AND ps.player_id = ps.vice_captain_player_id
         ), 1) AS final_player_score
 
@@ -563,7 +526,7 @@ individual_scores AS (
 )
 
 -- 9. Final Output Aggregation
-SELECT 
+SELECT
     m.matchup_id AS id,
     m.league_id,
     m.match_num,
@@ -575,13 +538,13 @@ SELECT
     COALESCE(SUM(CASE WHEN ind.team_side = 2 THEN ind.final_player_score ELSE 0 END), 0) AS fantasy_team_instance2_score
 FROM match_ctx m
 LEFT JOIN individual_scores ind ON ind.matchup_id = m.matchup_id
-GROUP BY 
-    m.matchup_id, 
-    m.league_id, 
-    m.match_num, 
-    m.fantasy_team_instance1_id, 
-    m.fantasy_team_instance2_id, 
-    m.fantasy_team1_id, 
+GROUP BY
+    m.matchup_id,
+    m.league_id,
+    m.match_num,
+    m.fantasy_team_instance1_id,
+    m.fantasy_team_instance2_id,
+    m.fantasy_team1_id,
     m.fantasy_team2_id;
     `;
 
@@ -596,12 +559,4 @@ GROUP BY
   }
 });
 
-/* =======================================================================================
-   EXPORT LAMBDA HANDLER
-   ======================================================================================= */
-export const lambdaHandler = serverless(app, {
-  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
-    req.lambdaEvent = event;
-    req.lambdaContext = context;
-  }
-});
+export const lambdaHandler = createHandler(app);

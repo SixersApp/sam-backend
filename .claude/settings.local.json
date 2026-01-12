@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sam build:*)",
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSSAMCLI\\\\bin\\\\sam.cmd\" deploy)",
+      "Bash(aws ec2 describe-vpc-endpoints:*)",
+      "Bash(aws ec2 describe-nat-gateways:*)",
+      "Bash(for region in us-east-1 us-east-2 us-west-1 eu-west-1)",
+      "Bash(do echo \"=== $region ===\")",
+      "Bash(done)",
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws ce get-cost-and-usage:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)",
+      "Bash(dir \"C:\\\\Users\\\\achag\\\\PersonalRepos\\\\sixers-stuff\\\\sam-app\\\\layers\" /s /b)"
+    ]
+  }
+}

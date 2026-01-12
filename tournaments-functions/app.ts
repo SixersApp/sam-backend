@@ -1,57 +1,62 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import pg from "pg";
-import fs from "fs";
-import express from "express";
-import serverless from "serverless-http";
-import cors from "cors";
-import { start } from "repl";
+import { getPool, createApp, createHandler, Request, Response } from "/opt/nodejs/index";
 
-/**
- * Extend Express Request to include Lambda event/context
- */
-declare global {
-  namespace Express {
-    interface Request {
-      lambdaEvent: APIGatewayProxyEvent;
-      lambdaContext: Context;
-    }
+const app = createApp();
+
+/* =======================================================================================
+   GET ALL TOURNAMENTS
+   GET /tournaments
+   ======================================================================================= */
+app.get("/tournaments", async (req: Request, res: Response) => {
+  const tokenUserId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  if (!tokenUserId) {
+    return res.status(401).json({ message: "Unauthorized" });
   }
-}
 
-const getPool = (): pg.Pool => {
-  const rdsCa = fs.readFileSync('/opt/nodejs/us-west-2-bundle.pem').toString();
+  let client;
 
-  return new pg.Pool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-    ssl: {
-      rejectUnauthorized: true,
-      ca: rdsCa
-    }
-  });
-};
+  try {
+    const pool = getPool();
+    client = await pool.connect();
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+    const result = await client.query(
+      `
+      SELECT
+        t.id,
+        t.name,
+        t.abbreviation,
+        (
+          SELECT json_agg(s.* ORDER BY s.start_year DESC)
+          FROM irldata.season s
+          WHERE s.tournament_id = t.id
+        ) AS seasons
+      FROM irldata.tournament_info t
+      ORDER BY t.name;
+      `
+    );
+
+    return res.status(200).json(result.rows);
+
+  } catch (err) {
+    console.error("GET /tournaments failed:", err);
+    return res.status(500).json({
+      message: "Internal server error"
+    });
+  } finally {
+    client?.release();
+  }
+});
 
 /* =======================================================================================
    GET TOURNAMENT INFO (PATH PARAMETER BASED)
    ======================================================================================= */
-app.get("/tournaments/:tournamentId", async (req, res) => {
+app.get("/tournaments/:tournamentId", async (req: Request, res: Response) => {
 
   const { tournamentId } = req.params;
 
   const tokenUserId =
     req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
-
-  // --------------------------
-  // AUTH / VALIDATION
 
   if (!tokenUserId) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -71,8 +76,8 @@ app.get("/tournaments/:tournamentId", async (req, res) => {
 
     const result = await client.query(
       `
-      SELECT 
-        t.*, 
+      SELECT
+        t.*,
         (
           SELECT json_agg(s.*)
           FROM irldata.season s
@@ -111,14 +116,11 @@ app.get("/tournaments/:tournamentId", async (req, res) => {
    GET SEASONS FOR TOURNAMENT
    GET /tournaments/:tournamentId/seasons
    ======================================================================================= */
-app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
+app.get("/tournaments/:tournamentId/seasons", async (req: Request, res: Response) => {
 
     const { tournamentId} = req.params;
 
     const tokenUserId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
-
-    // --------------------------
-    // AUTH / VALIDATION
 
     if (!tokenUserId) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -148,7 +150,7 @@ app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
 
       return res.status(200).json({
         tournamentId,
-        seasons: result.rows.map(row => ({
+        seasons: result.rows.map((row: { id: string; start_year: number; end_year: number }) => ({
           id: row.id,
           start_year: row.start_year,
           end_year: row.end_year
@@ -169,12 +171,4 @@ app.get("/tournaments/:tournamentId/seasons", async (req, res) => {
   }
 );
 
-/* =======================================================================================
-   EXPORT LAMBDA HANDLER
-   ======================================================================================= */
-export const lambdaHandler = serverless(app, {
-  request: (req: any, event: APIGatewayProxyEvent, context: Context) => {
-    req.lambdaEvent = event;
-    req.lambdaContext = context;
-  }
-});
+export const lambdaHandler = createHandler(app);

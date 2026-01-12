@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: |
   sam-app
@@ -20,13 +20,14 @@ Metadata:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
@@ -70,7 +71,18 @@ Resources:
       ContentUri: layers/certs/
       CompatibleRuntimes:
         - nodejs22.x
-  
+
+  SharedUtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SharedUtilsLayer
+      ContentUri: layers/shared/
+      CompatibleRuntimes:
+        - nodejs22.x
+    Metadata:
+      BuildMethod: nodejs22.x
+      BuildArchitecture: x86_64
+
   MyApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -85,7 +97,7 @@ Resources:
             Type: COGNITO_USER_POOLS
             UserPoolArn: !Ref CognitoUserPoolArn
         DefaultAuthorizer: MyCognitoAuthorizer
-        AddDefaultAuthorizerToCorsPreflight: false 
+        AddDefaultAuthorizerToCorsPreflight: false
 
   MatchScoringFunction:
     Type: AWS::Serverless::Function
@@ -93,7 +105,7 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -103,13 +115,14 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: match-scoring-functions/
       Handler: app.lambdaHandler
       Events:
@@ -139,12 +152,11 @@ Resources:
         Target: es2020
         Sourcemap: true
         EntryPoints:
-          - app.ts  
+          - app.ts
 
-
-# ----------------------------------------------------------
-# User Functions
-# ----------------------------------------------------------
+  # ----------------------------------------------------------
+  # User Functions
+  # ----------------------------------------------------------
 
   UserDataFunction:
     Type: AWS::Serverless::Function
@@ -152,7 +164,7 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -162,30 +174,31 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: users-functions/
       Handler: app.lambdaHandler
       Events:
         CreateUser:
-          Type: Api 
+          Type: Api
           Properties:
             RestApiId: !Ref MyApi
             Path: /users/auth/signup
             Method: put
         GetUserProfile:
-          Type: Api 
+          Type: Api
           Properties:
             RestApiId: !Ref MyApi
             Path: /users/profile
             Method: get
         UpdateUserProfile:
-          Type: Api 
+          Type: Api
           Properties:
             RestApiId: !Ref MyApi
             Path: /users/profile
@@ -199,16 +212,16 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-# ----------------------------------------------------------
-# Tournament Functions
-# ----------------------------------------------------------
+  # ----------------------------------------------------------
+  # Tournament Functions
+  # ----------------------------------------------------------
   TournamentDataFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -218,16 +231,23 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: tournaments-functions/
       Handler: app.lambdaHandler
       Events:
+        GetAllTournaments:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tournaments
+            Method: get
         GetTournament:
           Type: Api
           Properties:
@@ -249,16 +269,16 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-# ----------------------------------------------------------
-# Season Functions
-# ----------------------------------------------------------
+  # ----------------------------------------------------------
+  # Season Functions
+  # ----------------------------------------------------------
   SeasonsDataFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -268,13 +288,14 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: seasons-functions/
       Handler: app.lambdaHandler
       Events:
@@ -293,16 +314,16 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-# ----------------------------------------------------------
-# Match Functions
-# ----------------------------------------------------------
+  # ----------------------------------------------------------
+  # Match Functions
+  # ----------------------------------------------------------
   MatchDataFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -312,22 +333,23 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: matches-functions/
       Handler: app.lambdaHandler
       Events:
         GetHomeFeedMatches:
-            Type: Api
-            Properties:
-              RestApiId: !Ref MyApi
-              Path: /matches/feed
-              Method: get
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /matches/feed
+            Method: get
         GetMatch:
           Type: Api
           Properties:
@@ -343,16 +365,16 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-# ----------------------------------------------------------
-# Fantasy Team Functions
-# ----------------------------------------------------------
+  # ----------------------------------------------------------
+  # Fantasy Team Functions
+  # ----------------------------------------------------------
   FantasyTeamsDataFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -362,13 +384,14 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: fantasy-teams-functions/
       Handler: app.lambdaHandler
       Events:
@@ -399,16 +422,16 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
-# ----------------------------------------------------------
-# League Functions
-# ----------------------------------------------------------
+  # ----------------------------------------------------------
+  # League Functions
+  # ----------------------------------------------------------
   LeagueDataFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -418,13 +441,14 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: league-functions/
       Handler: app.lambdaHandler
       Events:
@@ -452,6 +476,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /leagues/{leagueId}/scoring-rules
             Method: get
+        CreateLeague:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues
+            Method: post
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
@@ -468,7 +498,7 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
-      VpcConfig: 
+      VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
         SubnetIds:
@@ -478,13 +508,14 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
         - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: matchup-functions/
       Handler: app.lambdaHandler
       Events:
