@@ -54,7 +54,16 @@ app.get("/leagues", async (req: Request, res: Response) => {
         FROM fantasydata.fantasy_teams all_ft
         JOIN authdata.profiles p ON p.user_id = all_ft.user_id
         WHERE all_ft.league_id = l.id
-    ) AS teams
+    ) AS teams,
+    (
+        SELECT jsonb_build_object(
+            'time_per_pick', lds.time_per_pick,
+            'pick_warning_seconds', lds.pick_warning_seconds,
+            'snake_draft', lds.snake_draft
+        )
+        FROM fantasydata.league_draft_settings lds
+        WHERE lds.league_id = l.id
+    ) AS draft_settings
 
 FROM fantasydata.leagues l
 JOIN fantasydata.fantasy_teams ft
@@ -162,7 +171,16 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
             l.status,
             l.max_teams,
             l.join_code,
-            l.season_id
+            l.season_id,
+            (
+                SELECT jsonb_build_object(
+                    'time_per_pick', lds.time_per_pick,
+                    'pick_warning_seconds', lds.pick_warning_seconds,
+                    'snake_draft', lds.snake_draft
+                )
+                FROM fantasydata.league_draft_settings lds
+                WHERE lds.league_id = l.id
+            ) AS draft_settings
         FROM fantasydata.leagues l
         JOIN fantasydata.fantasy_teams ft ON ft.league_id = l.id
         WHERE ft.user_id = $1
@@ -315,7 +333,16 @@ app.post("/leagues", async (req: Request, res: Response) => {
             FROM fantasydata.fantasy_teams all_ft
             JOIN authdata.profiles p ON p.user_id = all_ft.user_id
             WHERE all_ft.league_id = l.id
-        ) AS teams
+        ) AS teams,
+        (
+            SELECT jsonb_build_object(
+                'time_per_pick', lds.time_per_pick,
+                'pick_warning_seconds', lds.pick_warning_seconds,
+                'snake_draft', lds.snake_draft
+            )
+            FROM fantasydata.league_draft_settings lds
+            WHERE lds.league_id = l.id
+        ) AS draft_settings
       FROM fantasydata.leagues l
       JOIN fantasydata.fantasy_teams ft
           ON ft.league_id = l.id
