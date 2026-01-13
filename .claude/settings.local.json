@@ -12,7 +12,16 @@
       "Bash(aws ce get-cost-and-usage:*)",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(dir \"C:\\\\Users\\\\achag\\\\PersonalRepos\\\\sixers-stuff\\\\sam-app\\\\layers\" /s /b)"
+      "Bash(dir \"C:\\\\Users\\\\achag\\\\PersonalRepos\\\\sixers-stuff\\\\sam-app\\\\layers\" /s /b)",
+      "Bash(powershell -Command \"cd ''C:\\\\Users\\\\achag\\\\PersonalRepos\\\\sixers-stuff\\\\sam-app''; sam build\")",
+      "Bash(powershell -Command \"cd 'C:\\\\Users\\\\achag\\\\PersonalRepos\\\\sixers-stuff\\\\sam-app'; Remove-Item -Recurse -Force .aws-sam -ErrorAction SilentlyContinue; sam build\":*)",
+      "Bash(powershell -Command \"cd ''C:\\\\Users\\\\achag\\\\PersonalRepos\\\\sixers-stuff\\\\sam-app''; sam deploy --no-confirm-changeset\")",
+      "Bash(npm run build)",
+      "Bash(cmd.exe /c \"sam build\")",
+      "Bash(cmd.exe /c \"where sam\")",
+      "Bash(powershell.exe -Command \"cd ''C:/Users/achag/PersonalRepos/sixers-stuff/sam-app''; sam build 2>&1\")",
+      "Bash(powershell.exe -Command \"cd ''C:/Users/achag/PersonalRepos/sixers-stuff/sam-app''; sam deploy 2>&1\")",
+      "Bash(powershell.exe -Command \"cd ''C:/Users/achag/PersonalRepos/sixers-stuff/sam-app''; sam deploy --no-confirm-changeset 2>&1\")"
     ]
   }
 }

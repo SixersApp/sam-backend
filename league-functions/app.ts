@@ -287,7 +287,7 @@ app.post("/leagues", async (req: Request, res: Response) => {
         max_teams || 10,
         scoring_rules ? JSON.stringify(scoring_rules) : null,
         userId,
-        JSON.stringify({ name: team.name, color: team.color, abbreviation: team.abbreviation, icon: team.icon ?? null })
+        JSON.stringify({ team_name: team.name, team_color: team.color, abbreviation: team.abbreviation, team_icon: team.icon ?? null })
       ]
     );
 

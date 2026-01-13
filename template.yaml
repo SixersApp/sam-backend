@@ -76,7 +76,7 @@ Resources:
     Type: AWS::Serverless::LayerVersion
     Properties:
       LayerName: SharedUtilsLayer
-      ContentUri: layers/shared/
+      ContentUri: layers/shared/nodejs/
       CompatibleRuntimes:
         - nodejs22.x
     Metadata:
@@ -151,6 +151,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
 
@@ -210,6 +212,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
@@ -267,6 +271,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
@@ -312,6 +318,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
@@ -363,6 +371,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
@@ -420,6 +430,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
@@ -489,6 +501,8 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
 
@@ -538,5 +552,7 @@ Resources:
         Minify: true
         Target: es2020
         Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
