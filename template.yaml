@@ -476,6 +476,18 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /leagues/{leagueId}
             Method: get
+        GetLeagueByJoinCode:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/join/{joinCode}
+            Method: get
+        JoinLeagueByJoinCode:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/join/{joinCode}
+            Method: post
         GetDefaultScoringRules:
           Type: Api
           Properties:
@@ -494,6 +506,18 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /leagues
             Method: post
+        UpdateDraftSettings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/{leagueId}/draft-settings
+            Method: put
+        UpdateScoringRules:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/{leagueId}/scoring-rules
+            Method: put
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
