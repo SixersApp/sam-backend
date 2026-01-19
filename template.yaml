@@ -530,6 +530,11 @@ Resources:
         EntryPoints:
           - app.ts
 
+
+  # ----------------------------------------------------------
+  # Matchup Functions
+  # ----------------------------------------------------------
+
   MatchupDataFunction:
     Type: AWS::Serverless::Function
     Properties:
