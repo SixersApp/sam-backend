@@ -663,6 +663,162 @@ app.put("/leagues/:leagueId/scoring-rules", async (req: Request, res: Response) 
 });
 
 /* =======================================================================================
+   SET DRAFT ORDER AND START DRAFT
+   PUT /leagues/:leagueId/draft-order
+   ======================================================================================= */
+app.put("/leagues/:leagueId/draft-order", async (req: Request, res: Response) => {
+  const userId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  const { leagueId } = req.params;
+  if (!leagueId) {
+    return res.status(400).json({ message: "League Id is required" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const { draft_order } = req.body;
+
+  if (!draft_order || !Array.isArray(draft_order)) {
+    return res.status(400).json({ message: "draft_order array is required" });
+  }
+
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    // Verify league exists and user is the creator
+    const leagueCheck = await client.query(
+      `SELECT creator_id, status FROM fantasydata.leagues WHERE id = $1`,
+      [leagueId]
+    );
+
+    if (leagueCheck.rowCount === 0) {
+      return res.status(404).json({ message: "League not found" });
+    }
+
+    const league = leagueCheck.rows[0];
+
+    if (league.creator_id !== userId) {
+      return res.status(403).json({ message: "Only the league creator can set draft order" });
+    }
+
+    if (league.status !== "draft_pending") {
+      return res.status(400).json({ message: "Draft can only be started when league is in draft_pending status" });
+    }
+
+    await client.query("BEGIN");
+
+    // Update draft_order for specified teams
+    const specifiedTeamIds: string[] = [];
+    let maxSpecifiedOrder = 0;
+
+    for (const entry of draft_order) {
+      if (!entry.team_id || typeof entry.order !== "number") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Each draft_order entry must have team_id and order" });
+      }
+
+      await client.query(
+        `UPDATE fantasydata.fantasy_teams SET draft_order = $1 WHERE id = $2 AND league_id = $3`,
+        [entry.order, entry.team_id, leagueId]
+      );
+
+      specifiedTeamIds.push(entry.team_id);
+      if (entry.order > maxSpecifiedOrder) {
+        maxSpecifiedOrder = entry.order;
+      }
+    }
+
+    // Get unspecified teams ordered by created_at
+    const unspecifiedTeamsResult = await client.query(
+      `SELECT id FROM fantasydata.fantasy_teams
+       WHERE league_id = $1 AND id != ALL($2::uuid[])
+       ORDER BY created_at ASC`,
+      [leagueId, specifiedTeamIds]
+    );
+
+    // Assign sequential draft orders to unspecified teams
+    let nextOrder = maxSpecifiedOrder + 1;
+    for (const team of unspecifiedTeamsResult.rows) {
+      await client.query(
+        `UPDATE fantasydata.fantasy_teams SET draft_order = $1 WHERE id = $2`,
+        [nextOrder, team.id]
+      );
+      nextOrder++;
+    }
+
+    // Update league status to draft_in_progress
+    await client.query(
+      `UPDATE fantasydata.leagues SET status = 'draft_in_progress' WHERE id = $1`,
+      [leagueId]
+    );
+
+    await client.query("COMMIT");
+
+    // Fetch and return updated league details
+    const result = await client.query(
+      `
+      SELECT
+        l.id,
+        l.name,
+        l.tournament_id,
+        l.creator_id,
+        l.status,
+        l.max_teams,
+        l.join_code,
+        l.season_id,
+        ti.abbreviation AS tournament_abbr,
+        s.end_year AS season_year,
+        (
+          SELECT json_agg(
+            to_jsonb(all_ft) || jsonb_build_object('user_name', p.full_name)
+            ORDER BY all_ft.draft_order
+          )
+          FROM fantasydata.fantasy_teams all_ft
+          JOIN authdata.profiles p ON p.user_id = all_ft.user_id
+          WHERE all_ft.league_id = l.id
+        ) AS teams,
+        (
+          SELECT jsonb_build_object(
+            'time_per_pick', lds.time_per_pick,
+            'pick_warning_seconds', lds.pick_warning_seconds,
+            'snake_draft', lds.snake_draft
+          )
+          FROM fantasydata.league_draft_settings lds
+          WHERE lds.league_id = l.id
+        ) AS draft_settings,
+        (
+          SELECT json_agg(row_to_json(lsr.*) ORDER BY lsr.category, lsr.stat)
+          FROM fantasydata.league_scoring_rules lsr
+          WHERE lsr.league_id = l.id
+        ) AS scoring_rules
+      FROM fantasydata.leagues l
+      JOIN irldata.tournament_info ti ON ti.id = l.tournament_id
+      JOIN irldata.season s ON s.id = l.season_id
+      WHERE l.id = $1
+      `,
+      [leagueId]
+    );
+
+    return res.status(200).json(result.rows[0]);
+
+  } catch (err) {
+    if (client) {
+      await client.query("ROLLBACK");
+    }
+    console.error("PUT /leagues/:leagueId/draft-order failed:", err);
+    return res.status(500).json({ message: "Unexpected error occurred" });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
    CREATE LEAGUE
    POST /leagues
    ======================================================================================= */
