@@ -518,6 +518,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /leagues/{leagueId}/scoring-rules
             Method: put
+        SetDraftOrder:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/{leagueId}/draft-order
+            Method: put
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
