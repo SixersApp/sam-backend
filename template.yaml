@@ -435,6 +435,53 @@ Resources:
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
+  # Fantasy Team Instance Functions
+  # ----------------------------------------------------------
+  FantasyTeamInstanceDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
+      CodeUri: fantasy-team-instance-functions/
+      Handler: app.lambdaHandler
+      Events:
+        GetFantasyTeamInstance:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance
+            Method: get
+    Metadata:
+      # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - /opt/nodejs/*
+        EntryPoints:
+          - app.ts
+  # ----------------------------------------------------------
   # League Functions
   # ----------------------------------------------------------
   LeagueDataFunction:
