@@ -80,25 +80,6 @@ app.get("/fantasy-team-instance/:ftiId/performances", async (req: Request, res: 
   try {
     const pool = getPool();
     client = await pool.connect();
-
-    // First verify the user has access to this fantasy team instance
-    const accessCheck = await client.query(
-      `
-      SELECT fti.id
-      FROM fantasydata.fantasy_team_instance fti
-      JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
-      WHERE fti.id = $1 AND ft.user_id = $2
-      LIMIT 1;
-      `,
-      [ftiId, userId]
-    );
-
-    if (accessCheck.rowCount === 0) {
-      return res.status(404).json({
-        message: "Fantasy team instance not found or you do not have access to it"
-      });
-    }
-
     // Get player performances
     const sql = `
       WITH fti AS (
