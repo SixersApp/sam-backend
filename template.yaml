@@ -470,6 +470,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /fantasy-team-instance
             Method: get
+        GetFantasyTeamInstancePerformances:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance/{ftiId}/performances
+            Method: get
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
