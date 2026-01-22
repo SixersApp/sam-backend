@@ -474,7 +474,13 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
-            Path: /fantasy-team-instance/{ftiId}/performances
+            Path: /fantasy-team-instance/{id}/performances
+            Method: get
+        GetAllFantasyTeamInstances:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance/{id}/all
             Method: get
     Metadata:
       # Manage esbuild properties
@@ -577,6 +583,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /leagues/{leagueId}/draft-order
             Method: put
+        GetPositionRules:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /leagues/{leagueId}/position-rules
+            Method: get
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild

@@ -49,7 +49,72 @@ app.get("/fantasy-team-instance", async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json(result.rows[0]);
+    const instance = result.rows[0];
+
+    // Get player data for all positions
+    const slots = [
+      'bat1', 'bat2',
+      'wicket1',
+      'bowl1', 'bowl2', 'bowl3',
+      'all1',
+      'bench1', 'bench2', 'bench3', 'bench4'
+    ];
+
+    const playerIds = slots.map(slot => instance[slot]).filter(id => id !== null);
+
+    const players: Record<string, any> = {};
+    
+    if (playerIds.length > 0) {
+      const playersResult = await client.query(
+        `
+        SELECT 
+          p.id,
+          p.player_name,
+          p.full_name,
+          p.image,
+          p.position_id,
+          pos.name AS role,
+          p.country_id,
+          c.name AS country_name,
+          c.image AS country_image
+        FROM irldata.player p
+        LEFT JOIN irldata.position pos ON pos.id = p.position_id
+        LEFT JOIN irldata.country_info c ON c.id = p.country_id
+        WHERE p.id = ANY($1);
+        `,
+        [playerIds]
+      );
+
+      // Create a map of player_id -> player_data
+      const playersMap: Record<string, any> = {};
+      playersResult.rows.forEach((player: any) => {
+        playersMap[player.id] = player;
+      });
+
+      // Map each slot to its player data
+      slots.forEach(slot => {
+        const playerId = instance[slot];
+        if (playerId && playersMap[playerId]) {
+          players[slot] = playersMap[playerId];
+        } else {
+          players[slot] = null;
+        }
+      });
+    } else {
+      slots.forEach(slot => {
+        players[slot] = null;
+      });
+    }
+
+    return res.status(200).json({
+      id: instance.id,
+      fantasy_team_id: instance.fantasy_team_id,
+      match_num: instance.match_num,
+      captain: instance.captain,
+      vice_captain: instance.vice_captain,
+      is_locked: instance.is_locked,
+      players
+    });
 
   } catch (err) {
     console.error("GET /fantasy-team-instance failed:", err);
@@ -60,12 +125,129 @@ app.get("/fantasy-team-instance", async (req: Request, res: Response) => {
 });
 
 /* =======================================================================================
-   GET FANTASY TEAM INSTANCE PERFORMANCES
-   GET /fantasy-team-instance/:ftiId/performances
+   GET ALL FANTASY TEAM INSTANCES FOR A TEAM
+   GET /fantasy-team-instance/:id/all
    ======================================================================================= */
-app.get("/fantasy-team-instance/:ftiId/performances", async (req: Request, res: Response) => {
+app.get("/fantasy-team-instance/:id/all", async (req: Request, res: Response) => {
+  const { id: teamId } = req.params;
+  const userId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!teamId) {
+    return res.status(400).json({ message: "Missing teamId parameter" });
+  }
+
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    const result = await client.query(
+      `
+      SELECT fti.*
+      FROM fantasydata.fantasy_team_instance fti
+      JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
+      WHERE fti.fantasy_team_id = $1 
+        AND ft.user_id = $2
+      ORDER BY fti.match_num ASC;
+      `,
+      [teamId, userId]
+    );
+
+    const instances = result.rows;
+
+    // Collect all unique player IDs across all instances
+    const slots = [
+      'bat1', 'bat2',
+      'wicket1',
+      'bowl1', 'bowl2', 'bowl3',
+      'all1',
+      'flex1',
+      'bench1', 'bench2', 'bench3', 'bench4', 'bench5', 'bench6'
+    ];
+
+    const allPlayerIds = new Set<string>();
+    instances.forEach((instance: any) => {
+      slots.forEach(slot => {
+        if (instance[slot]) {
+          allPlayerIds.add(instance[slot]);
+        }
+      });
+    });
+
+    // Fetch all player data in one query
+    let playersMap: Record<string, any> = {};
+    if (allPlayerIds.size > 0) {
+      const playersResult = await client.query(
+        `
+        SELECT 
+          p.id,
+          p.player_name,
+          p.full_name,
+          p.image,
+          p.position_id,
+          pos.name AS role,
+          p.country_id,
+          c.name AS country_name,
+          c.image AS country_image
+        FROM irldata.player p
+        LEFT JOIN irldata.position pos ON pos.id = p.position_id
+        LEFT JOIN irldata.country_info c ON c.id = p.country_id
+        WHERE p.id = ANY($1);
+        `,
+        [Array.from(allPlayerIds)]
+      );
+
+      playersResult.rows.forEach((player: any) => {
+        playersMap[player.id] = player;
+      });
+    }
+
+    // Build simplified response for each instance
+    const response = instances.map((instance: any) => {
+      const players: Record<string, any> = {};
+      slots.forEach(slot => {
+        const playerId = instance[slot];
+        if (playerId && playersMap[playerId]) {
+          players[slot] = playersMap[playerId];
+        } else {
+          players[slot] = null;
+        }
+      });
+      
+      return {
+        id: instance.id,
+        fantasy_team_id: instance.fantasy_team_id,
+        match_num: instance.match_num,
+        captain: instance.captain,
+        vice_captain: instance.vice_captain,
+        is_locked: instance.is_locked,
+        players
+      };
+    });
+
+    return res.status(200).json(response);
+
+  } catch (err) {
+    console.error("GET /fantasy-teams/:teamId/instances failed:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
+   GET FANTASY TEAM INSTANCE PERFORMANCES
+   GET /fantasy-team-instance/:id/performances
+   ======================================================================================= */
+app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Response) => {
   const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
-  const { ftiId } = req.params;
+  const { id: ftiId } = req.params;
 
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -88,12 +270,11 @@ app.get("/fantasy-team-instance/:ftiId/performances", async (req: Request, res: 
               fti.fantasy_team_id,
               fti.match_num,
               ARRAY[
-                  bat1, bat2, bat3, bat4,
-                  bowl1, bowl2, bowl3, bowl4,
-                  all1, all2, all3,
-                  wicket1, wicket2,
-                  bench1, bench2, bench3, bench4, bench5, bench6, bench7, bench8,
-                  flex1, flex2, flex3, flex4
+                  bat1, bat2,
+                  wicket1,
+                  bowl1, bowl2, bowl3,
+                  all1, flex1,
+                  bench1, bench2, bench3, bench4, bench5, bench6
               ] AS player_ids
           FROM fantasydata.fantasy_team_instance fti
           WHERE fti.id = $1
@@ -252,6 +433,83 @@ app.get("/fantasy-team-instance/:ftiId/performances", async (req: Request, res: 
 
   } catch (err) {
     console.error("GET /fantasy-team-instance/:ftiId/performances failed:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
+   SWAP SLOTS ACROSS INSTANCES
+   POST /fantasy-team-instances/:ftiId/swap-slots
+   Body: { slot1: string, slot2: string }
+   ======================================================================================= */
+app.post("/fantasy-team-instances/:ftiId/swap-slots", async (req: Request, res: Response) => {
+  const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+  const { ftiId } = req.params;
+  const { slot1, slot2 } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!ftiId) {
+    return res.status(400).json({ message: "Missing fantasy team instance id" });
+  }
+
+  if (!slot1 || !slot2) {
+    return res.status(400).json({ message: "Missing slot1 or slot2 in request body" });
+  }
+
+  // Validate slot names (basic format check)
+  const validSlotPattern = /^(bat[1-2]|wicket1|bowl[1-3]|all1|bench[1-6])$/;
+  if (!validSlotPattern.test(slot1) || !validSlotPattern.test(slot2)) {
+    return res.status(400).json({ message: "Invalid slot name format" });
+  }
+
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    // First verify the user has access to this fantasy team instance
+    const accessCheck = await client.query(
+      `
+      SELECT fti.id
+      FROM fantasydata.fantasy_team_instance fti
+      JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
+      WHERE fti.id = $1 AND ft.user_id = $2
+      LIMIT 1;
+      `,
+      [ftiId, userId]
+    );
+
+    if (accessCheck.rowCount === 0) {
+      return res.status(404).json({
+        message: "Fantasy team instance not found or you do not have access to it"
+      });
+    }
+
+    // Call the swap_slots_across_instances function
+    const result = await client.query(
+      `
+      SELECT fantasydata.swap_slots_across_instances($1, $2, $3) AS result;
+      `,
+      [ftiId, slot1, slot2]
+    );
+
+    const swapResult = result.rows[0].result;
+
+    // Check if the swap was successful
+    if (swapResult.ok) {
+      return res.status(200).json(swapResult);
+    } else {
+      return res.status(400).json(swapResult);
+    }
+
+  } catch (err) {
+    console.error("POST /fantasy-team-instances/:ftiId/swap-slots failed:", err);
     return res.status(500).json({ message: "Internal server error" });
   } finally {
     client?.release();
