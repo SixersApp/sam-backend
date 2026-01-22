@@ -85,12 +85,12 @@ export const lambdaHandler = async (
                   fti.fantasy_team_id,
                   fti.match_num,
                   ARRAY[
-                      bat1, bat2, bat3, bat4,
-                      bowl1, bowl2, bowl3, bowl4,
-                      all1, all2, all3,
-                      wicket1, wicket2,
-                      bench1, bench2, bench3, bench4, bench5, bench6, bench7, bench8,
-                      flex1, flex2, flex3, flex4
+                      bat1, bat2,
+                      bowl1, bowl2, bowl3,
+                      all1,
+                      wicket1,
+                      bench1, bench2, bench3, bench4, bench5, bench6,
+                      flex1
                   ] AS player_ids
               FROM fantasydata.fantasy_team_instance fti
           ),

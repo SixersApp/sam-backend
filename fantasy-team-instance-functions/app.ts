@@ -441,10 +441,10 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
 
 /* =======================================================================================
    SWAP SLOTS ACROSS INSTANCES
-   POST /fantasy-team-instances/:ftiId/swap-slots
+   POST /fantasy-team-instance/:ftiId/swap-slots
    Body: { slot1: string, slot2: string }
    ======================================================================================= */
-app.post("/fantasy-team-instances/:ftiId/swap-slots", async (req: Request, res: Response) => {
+app.post("/fantasy-team-instance/:ftiId/swap-slots", async (req: Request, res: Response) => {
   const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
   const { ftiId } = req.params;
   const { slot1, slot2 } = req.body;
@@ -510,6 +510,166 @@ app.post("/fantasy-team-instances/:ftiId/swap-slots", async (req: Request, res: 
 
   } catch (err) {
     console.error("POST /fantasy-team-instances/:ftiId/swap-slots failed:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
+   UPDATE CAPTAIN AND VICE CAPTAIN
+   PATCH /fantasy-team-instance/:id/captains
+   Body: { captain: string, vice_captain: string }
+   Updates captain/vice captain for current and all future match weeks
+   Only allows update if current captain and new captain haven't played yet
+   ======================================================================================= */
+app.patch("/fantasy-team-instance/:id/captains", async (req: Request, res: Response) => {
+  const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+  const { id: ftiId } = req.params;
+  const { captain, vice_captain } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!ftiId) {
+    return res.status(400).json({ message: "Missing fantasy team instance id" });
+  }
+
+  if (!captain || !vice_captain) {
+    return res.status(400).json({ message: "Missing captain or vice_captain in request body" });
+  }
+
+  if (captain === vice_captain) {
+    return res.status(400).json({ message: "Captain and vice captain must be different players" });
+  }
+
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    // Get instance details, current captain, match info, and fantasy team id
+    const instanceCheck = await client.query(
+      `
+      SELECT
+        fti.id,
+        fti.fantasy_team_id,
+        fti.match_num,
+        fti.captain AS current_captain,
+        fti.vice_captain AS current_vice_captain,
+        fti.is_locked,
+        ft.league_id,
+        l.season_id,
+        ARRAY[
+          fti.bat1, fti.bat2,
+          fti.wicket1,
+          fti.bowl1, fti.bowl2, fti.bowl3,
+          fti.all1, fti.flex1
+        ] AS active_players
+      FROM fantasydata.fantasy_team_instance fti
+      JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
+      JOIN fantasydata.leagues l ON l.id = ft.league_id
+      WHERE fti.id = $1 AND ft.user_id = $2
+      LIMIT 1;
+      `,
+      [ftiId, userId]
+    );
+
+    if (instanceCheck.rowCount === 0) {
+      return res.status(404).json({
+        message: "Fantasy team instance not found or you do not have access to it"
+      });
+    }
+
+    const instance = instanceCheck.rows[0];
+
+    // Check if the instance is locked
+    if (instance.is_locked) {
+      return res.status(400).json({
+        message: "Cannot update captain/vice captain - team instance is locked"
+      });
+    }
+
+    // Verify that captain and vice captain are in the active roster (not bench)
+    const activePlayerIds = instance.active_players.filter((id: string | null) => id !== null);
+
+    if (!activePlayerIds.includes(captain)) {
+      return res.status(400).json({
+        message: "Captain must be an active player in the roster (not on bench)"
+      });
+    }
+
+    if (!activePlayerIds.includes(vice_captain)) {
+      return res.status(400).json({
+        message: "Vice captain must be an active player in the roster (not on bench)"
+      });
+    }
+
+    // Check if current captain and new captain have played in this match
+    const performanceCheck = await client.query(
+      `
+      WITH player_check AS (
+        SELECT
+          psi.player_id,
+          psi.team_id,
+          mi.id AS match_id
+        FROM irldata.player_season_info psi
+        JOIN irldata.match_info mi
+          ON mi.season_id = psi.season_id
+          AND psi.season_id = $1
+          AND (
+            (psi.team_id = mi.home_team_id AND mi.home_match_num = $2)
+            OR
+            (psi.team_id = mi.away_team_id AND mi.away_match_num = $2)
+          )
+        WHERE psi.player_id = ANY($3)
+      )
+      SELECT
+        pc.player_id,
+        pp.id AS performance_id
+      FROM player_check pc
+      LEFT JOIN irldata.player_performance pp
+        ON pp.player_season_id = (
+          SELECT id FROM irldata.player_season_info
+          WHERE player_id = pc.player_id AND season_id = $1
+        )
+        AND pp.match_id = pc.match_id
+      WHERE pp.id IS NOT NULL;
+      `,
+      [instance.season_id, instance.match_num, [instance.current_captain, captain]]
+    );
+
+    // If any performances exist for current or new captain, deny the update
+    if (performanceCheck.rowCount > 0) {
+      const playedPlayerIds = performanceCheck.rows.map((row: any) => row.player_id);
+      return res.status(400).json({
+        message: "Cannot update captain/vice captain - one or more players have already played in this match",
+        played_players: playedPlayerIds
+      });
+    }
+
+    // Update captain and vice captain for this instance and all future instances
+    const updateResult = await client.query(
+      `
+      UPDATE fantasydata.fantasy_team_instance
+      SET captain = $1, vice_captain = $2
+      WHERE fantasy_team_id = $3
+        AND match_num >= $4
+      RETURNING id, match_num, captain, vice_captain;
+      `,
+      [captain, vice_captain, instance.fantasy_team_id, instance.match_num]
+    );
+
+    return res.status(200).json({
+      message: "Captain and vice captain updated successfully for current and future weeks",
+      updated_count: updateResult.rowCount,
+      instances: updateResult.rows
+    });
+
+  } catch (err) {
+    console.error("PATCH /fantasy-team-instance/:id/captains failed:", err);
     return res.status(500).json({ message: "Internal server error" });
   } finally {
     client?.release();

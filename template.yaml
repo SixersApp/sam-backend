@@ -482,6 +482,18 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /fantasy-team-instance/{id}/all
             Method: get
+        SwapSlots:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance/{id}/swap-slots
+            Method: post
+        UpdateCaptains:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance/{id}/captains
+            Method: patch
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
