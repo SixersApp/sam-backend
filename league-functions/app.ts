@@ -819,6 +819,72 @@ app.put("/leagues/:leagueId/draft-order", async (req: Request, res: Response) =>
 });
 
 /* =======================================================================================
+   GET POSITION RULES FOR A LEAGUE
+   GET /leagues/:leagueId/position-rules
+   ======================================================================================= */
+app.get("/leagues/:leagueId/position-rules", async (req: Request, res: Response) => {
+  const userId =
+    req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  const { leagueId } = req.params;
+  if (!leagueId) {
+    return res.status(400).json({ message: "League Id is required" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    // Verify user has access to this league
+    const accessCheck = await client.query(
+      `SELECT 1 FROM fantasydata.fantasy_teams WHERE league_id = $1 AND user_id = $2`,
+      [leagueId, userId]
+    );
+
+    if (accessCheck.rowCount === 0) {
+      return res.status(403).json({ message: "You do not have access to this league" });
+    }
+
+    const sql = `
+      SELECT
+        lpr.id,
+        lpr.league_id,
+        lpr.min_count,
+        lpr.max_count,
+        lpr.roles,
+        (
+          SELECT json_agg(
+            jsonb_build_object(
+              'id', p.id,
+              'name', p.name
+            )
+          )
+          FROM irldata.position p
+          WHERE p.id = ANY(lpr.roles)
+        ) AS role_details
+      FROM fantasydata.league_position_rules lpr
+      WHERE lpr.league_id = $1;
+    `;
+
+    const result = await client.query(sql, [leagueId]);
+
+    return res.status(200).json(result.rows);
+
+  } catch (err) {
+    console.error("GET /leagues/:leagueId/position-rules failed:", err);
+    return res.status(500).json({ message: "Unexpected error occurred" });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
    CREATE LEAGUE
    POST /leagues
    ======================================================================================= */

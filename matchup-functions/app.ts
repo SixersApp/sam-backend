@@ -69,11 +69,11 @@ team_rosters AS (
         ti.captain AS captain_player_id,
         ti.vice_captain AS vice_captain_player_id,
         UNNEST(ARRAY[
-            bat1, bat2, bat3, bat4,
-            bowl1, bowl2, bowl3, bowl4,
-            all1, all2, all3,
-            wicket1, wicket2,
-            flex1, flex2
+            bat1, bat2,
+            bowl1, bowl2, bowl3,
+            all1,
+            wicket1,
+            flex1
         ]) AS player_id
     FROM candidate_matchups cm
     JOIN fantasydata.fantasy_team_instance ti ON ti.id = cm.fantasy_team_instance1_id
@@ -88,11 +88,11 @@ team_rosters AS (
         ti.captain AS captain_player_id,
         ti.vice_captain AS vice_captain_player_id,
         UNNEST(ARRAY[
-            bat1, bat2, bat3, bat4,
-            bowl1, bowl2, bowl3, bowl4,
-            all1, all2, all3,
-            wicket1, wicket2,
-            flex1, flex2
+            bat1, bat2,
+            bowl1, bowl2, bowl3,
+            all1,
+            wicket1,
+            flex1
         ]) AS player_id
     FROM candidate_matchups cm
     JOIN fantasydata.fantasy_team_instance ti ON ti.id = cm.fantasy_team_instance2_id
@@ -378,11 +378,11 @@ team_rosters AS (
         ti.captain AS captain_player_id,
         ti.vice_captain AS vice_captain_player_id,
         UNNEST(ARRAY[
-            bat1, bat2, bat3, bat4,
-            bowl1, bowl2, bowl3, bowl4,
-            all1, all2, all3,
-            wicket1, wicket2,
-            flex1, flex2
+            bat1, bat2,
+            bowl1, bowl2, bowl3,
+            all1,
+            wicket1,
+            flex1
         ]) AS player_id
     FROM match_ctx m
     JOIN fantasydata.fantasy_team_instance ti ON ti.id = m.fantasy_team_instance1_id
@@ -397,11 +397,11 @@ team_rosters AS (
         ti.captain AS captain_player_id,
         ti.vice_captain AS vice_captain_player_id,
         UNNEST(ARRAY[
-            bat1, bat2, bat3, bat4,
-            bowl1, bowl2, bowl3, bowl4,
-            all1, all2, all3,
-            wicket1, wicket2,
-            flex1, flex2
+            bat1, bat2,
+            bowl1, bowl2, bowl3,
+            all1,
+            wicket1,
+            flex1
         ]) AS player_id
     FROM match_ctx m
     JOIN fantasydata.fantasy_team_instance ti ON ti.id = m.fantasy_team_instance2_id
