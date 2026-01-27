@@ -4,7 +4,6 @@ const app = createApp();
 
 /* =======================================================================================
    PROPOSE A TRADE
-   POST /trades/propose
    ======================================================================================= */
 app.post("/trades/propose", async (req: Request, res: Response) => {
   const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
@@ -45,8 +44,7 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
 });
 
 /* =======================================================================================
-   GET TRADES (SENT & RECEIVED)
-   GET /trades/list/:teamId
+   GET TRADES
    ======================================================================================= */
 app.get("/trades/list/:teamId", async (req: Request, res: Response) => {
   const { teamId } = req.params;
@@ -61,11 +59,11 @@ app.get("/trades/list/:teamId", async (req: Request, res: Response) => {
           t.id, t.status, t.created_at,
           p_team.team_name AS from_team,
           r_team.team_name AS to_team,
-          (SELECT json_agg(json_build_object('id', p.id, 'name', p.name))
+          (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
            FROM fantasydata.trade_offered_players top 
            JOIN irldata.player p ON top.player_id = p.id 
            WHERE top.trade_id = t.id) AS offered_players,
-          (SELECT json_agg(json_build_object('id', p.id, 'name', p.name))
+          (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
            FROM fantasydata.trade_requested_players trp 
            JOIN irldata.player p ON trp.player_id = p.id 
            WHERE trp.trade_id = t.id) AS requested_players
@@ -87,8 +85,7 @@ app.get("/trades/list/:teamId", async (req: Request, res: Response) => {
 });
 
 /* =======================================================================================
-   ACCEPT TRADE (WITH OWNERSHIP CHECK)
-   POST /trades/:tradeId/accept
+   ACCEPT TRADE (TEST MODE: SWAP BAT1/BAT2)
    ======================================================================================= */
 app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
   const { tradeId } = req.params;
@@ -99,77 +96,71 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     client = await pool.connect();
     await client.query("BEGIN");
 
-    const tradeRes = await client.query(`SELECT * FROM fantasydata.trades WHERE id = $1 AND status = 'pending' FOR UPDATE`, [tradeId]);
-    if (tradeRes.rowCount === 0) return res.status(404).json({ message: "Trade not found/active" });
+    // 1. Fetch trade info
+    const tradeRes = await client.query(
+      `SELECT * FROM fantasydata.trades WHERE id = $1 AND status = 'pending' FOR UPDATE`, 
+      [tradeId]
+    );
+    if (tradeRes.rowCount === 0) return res.status(404).json({ message: "Trade not found" });
     const trade = tradeRes.rows[0];
 
-    const checkOffered = await client.query(
-      `SELECT player_id FROM fantasydata.trade_offered_players WHERE trade_id = $1
-       EXCEPT SELECT player_id FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $2`,
-      [tradeId, trade.proposer_fantasy_team_id]
+    // 2. Extract current player UUIDs from the roster slots
+    const proposerRes = await client.query(
+      `SELECT bat1, bat2 FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $1`,
+      [trade.proposer_fantasy_team_id]
+    );
+    const recipientRes = await client.query(
+      `SELECT bat1 FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $1`,
+      [trade.recipient_fantasy_team_id]
     );
 
-    const checkRequested = await client.query(
-      `SELECT player_id FROM fantasydata.trade_requested_players WHERE trade_id = $1
-       EXCEPT SELECT player_id FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $2`,
-      [tradeId, trade.recipient_fantasy_team_id]
-    );
+    const pBat1 = proposerRes.rows[0].bat1;
+    const pBat2 = proposerRes.rows[0].bat2;
+    const rBat1 = recipientRes.rows[0].bat1;
 
-    if (checkOffered.rowCount! > 0 || checkRequested.rowCount! > 0) {
-      await client.query(`UPDATE fantasydata.trades SET status = 'invalid' WHERE id = $1`, [tradeId]);
-      await client.query("COMMIT");
-      return res.status(400).json({ message: "Trade invalid: players have been moved/dropped." });
-    }
-
+    // 3. Swap: Recipient gets Proposer's bat1 and bat2
     await client.query(
-      `UPDATE fantasydata.fantasy_team_instance SET fantasy_team_id = $1 
-       WHERE player_id IN (SELECT player_id FROM fantasydata.trade_offered_players WHERE trade_id = $2)`,
-      [trade.recipient_fantasy_team_id, tradeId]
-    );
-    await client.query(
-      `UPDATE fantasydata.fantasy_team_instance SET fantasy_team_id = $1 
-       WHERE player_id IN (SELECT player_id FROM fantasydata.trade_requested_players WHERE trade_id = $2)`,
-      [trade.proposer_fantasy_team_id, tradeId]
+      `UPDATE fantasydata.fantasy_team_instance SET bat1 = $1, bat2 = $2 WHERE fantasy_team_id = $3`,
+      [pBat1, pBat2, trade.recipient_fantasy_team_id]
     );
 
+    // 4. Swap: Proposer gets Recipient's bat1 (and we null their bat2 for the 2-for-1 test)
+    await client.query(
+      `UPDATE fantasydata.fantasy_team_instance SET bat1 = $1, bat2 = NULL WHERE fantasy_team_id = $2`,
+      [rBat1, trade.proposer_fantasy_team_id]
+    );
+
+    // 5. Finalize
     await client.query(`UPDATE fantasydata.trades SET status = 'accepted' WHERE id = $1`, [tradeId]);
 
     await client.query("COMMIT");
-    return res.status(200).json({ message: "Trade accepted and rosters updated." });
+    return res.status(200).json({ message: "Trade accepted: bat slots updated." });
   } catch (err) {
     await client?.query("ROLLBACK");
-    return res.status(500).json({ message: "Unexpected error" });
+    console.error("Accept failed:", err);
+    return res.status(500).json({ message: "Internal error" });
   } finally {
     client?.release();
   }
 });
 
 /* =======================================================================================
-   DECLINE TRADE (HANDLES REVOKE & DECLINE SIMPLY)
-   PATCH /trades/:tradeId/decline
+   DECLINE TRADE
    ======================================================================================= */
 app.patch("/trades/:tradeId/decline", async (req: Request, res: Response) => {
   const { tradeId } = req.params;
   let client;
-
   try {
     const pool = getPool();
     client = await pool.connect();
-    
-    // We simply set any pending trade to 'declined'
     const result = await client.query(
       `UPDATE fantasydata.trades SET status = 'declined' WHERE id = $1 AND status = 'pending'`,
       [tradeId]
     );
-
-    if (result.rowCount === 0) {
-      return res.status(400).json({ message: "Trade could not be declined." });
-    }
-
-    return res.status(200).json({ message: "Trade successfully declined." });
+    if (result.rowCount === 0) return res.status(400).json({ message: "Cannot decline trade" });
+    return res.status(200).json({ message: "Trade declined" });
   } catch (err) {
-    console.error("PATCH /trades/:tradeId/decline failed:", err);
-    return res.status(500).json({ message: "Unexpected error occurred" });
+    return res.status(500).json({ message: "Unexpected error" });
   } finally {
     client?.release();
   }
