@@ -1,0 +1,6 @@
+{
+  "field": "getDraftPicks",
+  "arguments": {
+    "leagueId": "league-abc"
+  }
+}
