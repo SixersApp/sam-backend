@@ -1,0 +1,46 @@
+type DraftPick {
+  teamId: String!
+  playerId: String!
+  roundNumber: Int!
+  pickNumber: Int!
+  leagueId: String!
+  timestamp: String!
+}
+
+type DraftPickResult {
+  pick: DraftPick!
+  nextTeamId: String
+  nextPickExpiresAt: String
+}
+
+type DraftState {
+  leagueId: String!
+  picks: [DraftPick!]!
+  currentTeamId: String
+  currentRound: Int!
+  currentPick: Int!
+  pickExpiresAt: String
+  status: String!
+}
+
+input DraftPickInput {
+  teamId: String!
+  playerId: String!
+  roundNumber: Int!
+  pickNumber: Int!
+  leagueId: String!
+}
+
+type Query {
+  getDraftPicks(leagueId: String!): [DraftPick!]!
+  getDraftState(leagueId: String!): DraftState!
+}
+
+type Mutation {
+  postDraftPick(input: DraftPickInput!): DraftPickResult!
+}
+
+type Subscription {
+  onDraftPick(leagueId: String!): DraftPickResult
+    @aws_subscribe(mutations: ["postDraftPick"])
+}
