@@ -3,12 +3,12 @@ import { getPool, createApp, createHandler, Request, Response } from "/opt/nodej
 const app = createApp();
 
 /* =======================================================================================
-   PROPOSE A TRADE (Updated with match_num)
+   PROPOSE A TRADE
+   POST /trades/propose
    ======================================================================================= */
 app.post("/trades/propose", async (req: Request, res: Response) => {
   const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
-  // Added matchNum to the request body
-  const { leagueId, proposerTeamId, recipientTeamId, offeredPlayerIds, requestedPlayerIds, matchNum } = req.body;
+  const { leagueId, proposerTeamId, recipientTeamId, offeredPlayerIds, requestedPlayerIds } = req.body;
 
   if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
@@ -18,7 +18,7 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
     client = await pool.connect();
     await client.query("BEGIN");
 
-    // 1. Insert Trade Header (Consider adding match_num to your trades table if not there)
+    // Logic Check: schema confirms no match_num in fantasydata.trades
     const tradeResult = await client.query(
       `INSERT INTO fantasydata.trades (league_id, proposer_fantasy_team_id, recipient_fantasy_team_id, status)
        VALUES ($1, $2, $3, 'pending') RETURNING id`,
@@ -26,7 +26,6 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
     );
     const tradeId = tradeResult.rows[0].id;
 
-    // 2. Insert Offered/Requested Players
     for (const pid of offeredPlayerIds) {
       await client.query(`INSERT INTO fantasydata.trade_offered_players (trade_id, player_id) VALUES ($1, $2)`, [tradeId, pid]);
     }
@@ -36,21 +35,65 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
 
     await client.query("COMMIT");
     return res.status(201).json({ message: "Trade proposed successfully", tradeId });
-  } catch (err) {
+  } catch (err: any) {
     await client?.query("ROLLBACK");
-    console.error("POST /trades/propose failed:", err);
-    return res.status(500).json({ message: "Failed to propose trade" });
+    console.error("Propose Error:", err.message);
+    return res.status(500).json({ error: err.message });
   } finally {
     client?.release();
   }
 });
 
 /* =======================================================================================
-   ACCEPT TRADE (Updated to target specific match_num)
+   GET TRADES (LIST)
+   GET /trades/list/:teamId
+   ======================================================================================= */
+app.get("/trades/list/:teamId", async (req: Request, res: Response) => {
+  const { teamId } = req.params;
+  let client;
+
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    // Logic Check: irldata.player uses 'full_name'
+    const sql = `
+      SELECT 
+          t.id, t.status, t.created_at,
+          p_team.team_name AS from_team,
+          r_team.team_name AS to_team,
+          (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
+           FROM fantasydata.trade_offered_players top 
+           JOIN irldata.player p ON top.player_id = p.id 
+           WHERE top.trade_id = t.id) AS offered_players,
+          (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
+           FROM fantasydata.trade_requested_players trp 
+           JOIN irldata.player p ON trp.player_id = p.id 
+           WHERE trp.trade_id = t.id) AS requested_players
+      FROM fantasydata.trades t
+      JOIN fantasydata.fantasy_teams p_team ON t.proposer_fantasy_team_id = p_team.id
+      JOIN fantasydata.fantasy_teams r_team ON t.recipient_fantasy_team_id = r_team.id
+      WHERE t.proposer_fantasy_team_id = $1 OR t.recipient_fantasy_team_id = $1
+      ORDER BY t.created_at DESC;
+    `;
+
+    const result = await client.query(sql, [teamId]);
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error("List Error:", err.message);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
+   ACCEPT TRADE (ROSTER SWAP)
+   POST /trades/:tradeId/accept
    ======================================================================================= */
 app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
   const { tradeId } = req.params;
-  const { matchNum } = req.body; // You need to know which match this trade applies to
+  const { matchNum } = req.body; // matchNum is strictly required for fantasy_team_instance
 
   let client;
   try {
@@ -65,15 +108,13 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     if (tradeRes.rowCount === 0) return res.status(404).json({ message: "Trade not found" });
     const trade = tradeRes.rows[0];
 
-    // 2. Extract current player UUIDs using the specific match_num
+    // Logic Check: Must use composite key (team_id + match_num)
     const proposerRes = await client.query(
-      `SELECT bat1, bat2 FROM fantasydata.fantasy_team_instance 
-       WHERE fantasy_team_id = $1 AND match_num = $2`,
+      `SELECT bat1, bat2 FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $1 AND match_num = $2`,
       [trade.proposer_fantasy_team_id, matchNum]
     );
     const recipientRes = await client.query(
-      `SELECT bat1 FROM fantasydata.fantasy_team_instance 
-       WHERE fantasy_team_id = $1 AND match_num = $2`,
+      `SELECT bat1 FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $1 AND match_num = $2`,
       [trade.recipient_fantasy_team_id, matchNum]
     );
 
@@ -81,11 +122,10 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
         return res.status(400).json({ message: "Team instance for this match does not exist." });
     }
 
-    const pBat1 = proposerRes.rows[0].bat1;
-    const pBat2 = proposerRes.rows[0].bat2;
-    const rBat1 = recipientRes.rows[0].bat1;
+    const { bat1: pBat1, bat2: pBat2 } = proposerRes.rows[0];
+    const { bat1: rBat1 } = recipientRes.rows[0];
 
-    // 3. Swap logic targeting the specific match_num instance
+    // Perform 2-for-1 Swap Logic targeting the match instance
     await client.query(
       `UPDATE fantasydata.fantasy_team_instance SET bat1 = $1, bat2 = $2 
        WHERE fantasy_team_id = $3 AND match_num = $4`,
@@ -101,12 +141,38 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     await client.query(`UPDATE fantasydata.trades SET status = 'accepted' WHERE id = $1`, [tradeId]);
 
     await client.query("COMMIT");
-    return res.status(200).json({ message: "Trade accepted: instance updated." });
-  } catch (err) {
+    return res.status(200).json({ message: "Trade accepted successfully" });
+  } catch (err: any) {
     await client?.query("ROLLBACK");
-    console.error("Accept failed:", err);
-    return res.status(500).json({ message: "Internal error" });
+    console.error("Accept Error:", err.message);
+    return res.status(500).json({ error: err.message });
   } finally {
     client?.release();
   }
 });
+
+/* =======================================================================================
+   DECLINE TRADE
+   PATCH /trades/:tradeId/decline
+   ======================================================================================= */
+app.patch("/trades/:tradeId/decline", async (req: Request, res: Response) => {
+  const { tradeId } = req.params;
+  let client;
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+    const result = await client.query(
+      `UPDATE fantasydata.trades SET status = 'declined' WHERE id = $1 AND status = 'pending'`,
+      [tradeId]
+    );
+    if (result.rowCount === 0) return res.status(400).json({ message: "Cannot decline trade" });
+    return res.status(200).json({ message: "Trade declined" });
+  } catch (err: any) {
+    console.error("Decline Error:", err.message);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client?.release();
+  }
+});
+
+export const lambdaHandler = createHandler(app);

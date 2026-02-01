@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: |
   sam-app
@@ -20,9 +20,9 @@ Metadata:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -35,9 +35,9 @@ Globals:
   Api:
     # This configures API Gateway to answer the browser's "OPTIONS" check
     Cors:
-      AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
-      AllowHeaders: '''Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'''
-      AllowOrigin: '''*''' # <--- Note the quoting: "'*'"
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'" # <--- Note the quoting: "'*'"
 
 Parameters:
   CognitoUserPoolArn:
@@ -88,9 +88,9 @@ Resources:
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS,PATCH'''
-        AllowHeaders: '''Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'''
-        AllowOrigin: '''*''' # <--- Note the quoting: "'*'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS,PATCH'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'" # <--- Note the quoting: "'*'"
       Auth:
         Authorizers:
           MyCognitoAuthorizer:
@@ -98,103 +98,6 @@ Resources:
             UserPoolArn: !Ref CognitoUserPoolArn
         DefaultAuthorizer: MyCognitoAuthorizer
         AddDefaultAuthorizerToCorsPreflight: false
-  
-  DraftAPI:
-    Type: AWS::Serverless::GraphQLApi
-    Properties:
-      SchemaUri: draft-functions/schema.graphql
-      Auth:
-        Type: AMAZON_COGNITO_USER_POOLS
-        UserPool:
-          UserPoolId: 'us-west-2_4xTIIoc8k'
-          AwsRegion: us-west-2
-          DefaultAction: ALLOW
-        Additional:
-          - Type: AWS_IAM
-      DataSources:
-        Lambda:
-          DraftDataSource:
-            FunctionArn: !GetAtt DraftFunction.Arn
-      Functions:
-        getDraftPicksFunction:
-          Runtime:
-            Name: APPSYNC_JS
-            Version: 1.0.0
-          DataSource: DraftDataSource
-          CodeUri: ./draft-functions/resolvers/getDraftPicks.js
-        getDraftStateFunction:
-          Runtime:
-            Name: APPSYNC_JS
-            Version: 1.0.0
-          DataSource: DraftDataSource
-          CodeUri: ./draft-functions/resolvers/getDraftState.js
-        postDraftPickFunction:
-          Runtime:
-            Name: APPSYNC_JS
-            Version: 1.0.0
-          DataSource: DraftDataSource
-          CodeUri: ./draft-functions/resolvers/postDraftPick.js
-      Resolvers:
-        Query:
-          getDraftPicks:
-            Runtime:
-              Name: APPSYNC_JS
-              Version: 1.0.0
-            Pipeline:
-              - getDraftPicksFunction
-          getDraftState:
-            Runtime:
-              Name: APPSYNC_JS
-              Version: 1.0.0
-            Pipeline:
-              - getDraftStateFunction
-        Mutation:
-          postDraftPick:
-            Runtime:
-              Name: APPSYNC_JS
-              Version: 1.0.0
-            Pipeline:
-              - postDraftPickFunction
-
-  # ----------------------------------------------------------
-  # Draft Functions
-  # ----------------------------------------------------------
-  DraftFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-        - !Ref SharedUtilsLayer
-      CodeUri: draft-functions/
-      Handler: app.lambdaHandler
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        External:
-          - /opt/nodejs/*
-        EntryPoints:
-          - app.ts
 
   MatchScoringFunction:
     Type: AWS::Serverless::Function
@@ -212,9 +115,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -273,9 +176,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -332,9 +235,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -391,9 +294,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -438,9 +341,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -491,9 +394,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -550,9 +453,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -621,9 +524,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -710,6 +613,7 @@ Resources:
         EntryPoints:
           - app.ts
 
+
   # ----------------------------------------------------------
   # Matchup Functions
   # ----------------------------------------------------------
@@ -730,9 +634,9 @@ Resources:
           - !Ref PrivateSubnetFourId
       Environment:
         Variables:
-          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
-          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
       Layers:
@@ -768,7 +672,6 @@ Resources:
   # ----------------------------------------------------------
   # Trade Functions
   # ----------------------------------------------------------
-
   TradeDataFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -802,7 +705,7 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /trades/propose
             Method: post
-        ListTrades:
+        GetTradesList:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
@@ -821,7 +724,6 @@ Resources:
             Path: /trades/{tradeId}/decline
             Method: patch
     Metadata:
-      # Manage esbuild properties
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
