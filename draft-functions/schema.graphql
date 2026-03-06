@@ -31,6 +31,30 @@ input DraftPickInput {
   leagueId: String!
 }
 
+input DraftOrderInput {
+  teamId: String!
+  order: Int!
+}
+
+input StartDraftInput {
+  leagueId: String!
+  draftOrder: [DraftOrderInput!]
+}
+
+type DraftOrderEntry {
+  teamId: String!
+  order: Int!
+}
+
+type DraftStartResult {
+  leagueId: String!
+  currentTeamId: String!
+  currentRound: Int!
+  currentPick: Int!
+  pickExpiresAt: String!
+  draftOrder: [DraftOrderEntry!]!
+}
+
 type Query {
   getDraftPicks(leagueId: String!): [DraftPick!]!
   getDraftState(leagueId: String!): DraftState!
@@ -38,9 +62,12 @@ type Query {
 
 type Mutation {
   postDraftPick(input: DraftPickInput!): DraftPickResult!
+  startDraft(input: StartDraftInput!): DraftStartResult!
 }
 
 type Subscription {
   onDraftPick(leagueId: String!): DraftPickResult
     @aws_subscribe(mutations: ["postDraftPick"])
+  onDraftStart(leagueId: String!): DraftStartResult
+    @aws_subscribe(mutations: ["startDraft"])
 }
