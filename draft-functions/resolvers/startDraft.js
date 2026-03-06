@@ -4,7 +4,7 @@ export function request(ctx) {
   return {
     operation: 'Invoke',
     payload: {
-      field: 'getDraftPicks',
+      field: 'startDraft',
       arguments: ctx.args,
       identity: ctx.identity,
     },
