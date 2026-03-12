@@ -24,7 +24,13 @@
       "Bash(powershell.exe -Command \"cd ''C:/Users/achag/PersonalRepos/sixers-stuff/sam-app''; sam deploy --no-confirm-changeset 2>&1\")",
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(aws cloudformation:*)",
+      "Bash(aws logs:*)",
+      "Bash(MSYS_NO_PATHCONV=1 aws logs describe-log-groups --log-group-name-prefix \"/aws/lambda/sam-app\" --query \"logGroups[*].logGroupName\" --output text 2>&1)",
+      "Bash(MSYS_NO_PATHCONV=1 aws logs filter-log-events --log-group-name \"/aws/lambda/sam-app-DraftSchedulerFunction-uhv8FjJnpEdc\" --limit 20 --query \"events[*].message\" --output text 2>&1)",
+      "Bash(MSYS_NO_PATHCONV=1 aws logs filter-log-events --log-group-name \"/aws/lambda/sam-app-AutoPickInvokerFunction-MHCbyy22W9Pw\" --limit 20 --query \"events[*].message\" --output text 2>&1)",
+      "Bash(cd C:/Users/achag/PersonalRepos/sixers-stuff/sam-app && sam.cmd build --cached && sam.cmd deploy --no-confirm-changeset 2>&1)"
     ]
   }
 }

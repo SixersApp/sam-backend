@@ -1,0 +1,14 @@
+{
+  "name": "draft-scheduler-function",
+  "version": "1.0.0",
+  "description": "Non-VPC Lambda that creates EventBridge Scheduler schedules for autopick",
+  "main": "app.js",
+  "license": "MIT",
+  "dependencies": {
+    "esbuild": "^0.14.14"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.7",
+    "typescript": "^4.8.4"
+  }
+}
