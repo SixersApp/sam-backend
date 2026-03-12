@@ -61,11 +61,14 @@ app.get("/draft/players", async (req: Request, res: Response) => {
         pos.name AS role,
         ci.name AS country_name,
         ci.image AS country_image,
-        psi.rank
+        psi.rank,
+        psi.initial_projection,
+        t.name AS team_name
       FROM irldata.player_season_info psi
       JOIN irldata.player p ON p.id = psi.player_id
-      LEFT JOIN irldata.position pos ON pos.id = psi.position_id
+      LEFT JOIN irldata.position pos ON pos.id = p.position_id
       LEFT JOIN irldata.country_info ci ON ci.id = p.country_id
+      LEFT JOIN irldata.team t ON t.id = psi.team_id
       WHERE psi.season_id = $1
         AND psi.tournament_id = $2
       ORDER BY psi.rank ASC

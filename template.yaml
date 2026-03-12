@@ -62,7 +62,6 @@ Parameters:
   PrivateSubnetFourId:
     Type: AWS::EC2::Subnet::Id
     Description: A private subnet ID for the lambda
-
 Resources:
   RdsCertLayer:
     Type: AWS::Serverless::LayerVersion
@@ -115,6 +114,8 @@ Resources:
         Lambda:
           DraftDataSource:
             FunctionArn: !GetAtt DraftFunction.Arn
+          DraftSchedulerDataSource:
+            FunctionArn: !GetAtt DraftSchedulerFunction.Arn
       Functions:
         getDraftPicksFunction:
           Runtime:
@@ -140,6 +141,24 @@ Resources:
             Version: 1.0.0
           DataSource: DraftDataSource
           CodeUri: ./draft-functions/resolvers/startDraft.js
+        autoPickDraftPlayerFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/autoPickDraftPlayer.js
+        endDraftFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/endDraft.js
+        schedulePickFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftSchedulerDataSource
+          CodeUri: ./draft-functions/resolvers/schedulePick.js
       Resolvers:
         Query:
           getDraftPicks:
@@ -161,12 +180,27 @@ Resources:
               Version: 1.0.0
             Pipeline:
               - postDraftPickFunction
+              - schedulePickFunction
           startDraft:
             Runtime:
               Name: APPSYNC_JS
               Version: 1.0.0
             Pipeline:
               - startDraftFunction
+              - schedulePickFunction
+          autoPickDraftPlayer:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - autoPickDraftPlayerFunction
+              - schedulePickFunction
+          endDraft:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - endDraftFunction
 
   # ----------------------------------------------------------
   # Draft Functions
@@ -177,6 +211,7 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - x86_64
+      Timeout: 15
       VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroupId
@@ -205,6 +240,86 @@ Resources:
         Sourcemap: true
         External:
           - /opt/nodejs/*
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # SQS Queue for delayed autopick messages (non-VPC, no endpoint needed)
+  # ----------------------------------------------------------
+  AutoPickQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: autopick-queue
+      VisibilityTimeout: 30
+
+  # ----------------------------------------------------------
+  # AutoPick Invoker Function (triggered by SQS)
+  # ----------------------------------------------------------
+  AutoPickInvokerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      Environment:
+        Variables:
+          APPSYNC_ENDPOINT: !GetAtt DraftAPI.GraphQLUrl
+      CodeUri: autopick-invoker/
+      Handler: app.lambdaHandler
+      Events:
+        AutoPickSQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt AutoPickQueue.Arn
+            BatchSize: 1
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub '${DraftAPI.Arn}/types/Mutation/fields/autoPickDraftPlayer'
+                - !Sub '${DraftAPI.Arn}/types/Mutation/fields/endDraft'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # Draft Scheduler Function (non-VPC, sends delayed SQS messages)
+  # ----------------------------------------------------------
+  DraftSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      Environment:
+        Variables:
+          AUTOPICK_QUEUE_URL: !Ref AutoPickQueue
+      CodeUri: draft-scheduler-function/
+      Handler: app.lambdaHandler
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt AutoPickQueue.QueueName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
         EntryPoints:
           - app.ts
 

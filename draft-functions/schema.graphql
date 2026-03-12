@@ -1,4 +1,4 @@
-type DraftPick {
+type DraftPick @aws_cognito_user_pools @aws_iam {
   teamId: String!
   playerId: String!
   roundNumber: Int!
@@ -7,10 +7,11 @@ type DraftPick {
   timestamp: String!
 }
 
-type DraftPickResult {
+type DraftPickResult @aws_cognito_user_pools @aws_iam {
   pick: DraftPick!
   nextTeamId: String
   nextPickExpiresAt: String
+  leagueId: String!
 }
 
 type DraftState {
@@ -29,6 +30,11 @@ input DraftPickInput {
   roundNumber: Int!
   pickNumber: Int!
   leagueId: String!
+}
+
+input AutoPickInput {
+  leagueId: String!
+  expectedPickNumber: Int!
 }
 
 input DraftOrderInput {
@@ -55,6 +61,11 @@ type DraftStartResult {
   draftOrder: [DraftOrderEntry!]!
 }
 
+type DraftEndResult @aws_cognito_user_pools @aws_iam {
+  leagueId: String!
+  status: String!
+}
+
 type Query {
   getDraftPicks(leagueId: String!): [DraftPick!]!
   getDraftState(leagueId: String!): DraftState!
@@ -63,11 +74,15 @@ type Query {
 type Mutation {
   postDraftPick(input: DraftPickInput!): DraftPickResult!
   startDraft(input: StartDraftInput!): DraftStartResult!
+  autoPickDraftPlayer(input: AutoPickInput!): DraftPickResult! @aws_iam
+  endDraft(leagueId: String!): DraftEndResult! @aws_iam
 }
 
 type Subscription {
   onDraftPick(leagueId: String!): DraftPickResult
-    @aws_subscribe(mutations: ["postDraftPick"])
+    @aws_subscribe(mutations: ["postDraftPick", "autoPickDraftPlayer"])
   onDraftStart(leagueId: String!): DraftStartResult
     @aws_subscribe(mutations: ["startDraft"])
+  onDraftEnd(leagueId: String!): DraftEndResult
+    @aws_subscribe(mutations: ["endDraft"])
 }
