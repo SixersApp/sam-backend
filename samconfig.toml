@@ -19,7 +19,7 @@ confirm_changeset = true
 resolve_s3 = true
 CognitoUserPoolArn = "arn:aws:cognito-idp:us-west-2:804320730546:userpool/us-west-2_4xTIIoc8k"
 s3_prefix = "sam-app"
-parameter_overrides = "CognitoUserPoolArn=\"arn:aws:cognito-idp:us-west-2:804320730546:userpool/us-west-2_4xTIIoc8k\" DbName=\"postgres\" LambdaSecurityGroupId=\"sg-05e95a21c1ca75557\" PrivateSubnetOneId=\"subnet-00adce33d4770c362\" PrivateSubnetTwoId=\"subnet-04ef2b04ba52bebf3\" PrivateSubnetThreeId=\"subnet-0f0e9ef6acbb355d0\" PrivateSubnetFourId=\"subnet-04da8f9817052a5ac\""
+parameter_overrides = "CognitoUserPoolArn=\"arn:aws:cognito-idp:us-west-2:804320730546:userpool/us-west-2_4xTIIoc8k\" DbName=\"postgres\" LambdaSecurityGroupId=\"sg-05e95a21c1ca75557\" PrivateSubnetOneId=\"subnet-00adce33d4770c362\" PrivateSubnetTwoId=\"subnet-04ef2b04ba52bebf3\" PrivateSubnetThreeId=\"subnet-0f0e9ef6acbb355d0\" PrivateSubnetFourId=\"subnet-04da8f9817052a5ac\" VpcId=\"vpc-0d1851dea27328a18\""
 image_repositories = []
 
 [default.package.parameters]

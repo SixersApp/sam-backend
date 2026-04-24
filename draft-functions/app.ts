@@ -60,99 +60,87 @@ interface DraftEndResult {
 type LambdaResponse = DraftPick[] | DraftPickResult | DraftState | DraftStartResult | DraftEndResult;
 
 
-// ── Hardcoded roster rules ─────────────────────────────────────────────
+// ── Hardcoded roster rules (using psi.role from player_season_info) ───
 
-const POSITION_IDS = {
-  BOWLING_ALLROUNDER: '61e23909-517c-4ee4-b46e-0ed59bd1f75f',
-  WICKETKEEPER:       '836d3328-822d-4367-85b0-39ee48a4f5e6',
-  BOWLER:             '8fb01a2b-3c72-4316-ad41-9f8231cf1a8a',
-  ALLROUNDER:         'b4eb2689-ed30-459d-bbab-b09c6e7365fc',
-  BATSMAN:            'd0dba3b8-bad7-46cc-81f5-bb117729abc5',
-  BATTING_ALLROUNDER: 'e6338d95-1537-41b7-aa1b-50ff6eebc870',
-  MIDDLE_ORDER_BATTER:'f3928ab5-6079-46c1-a431-9d3edb829da1',
-  TOP_ORDER_BATTER:   'fd663301-878d-4021-9182-a457e2376d65',
+const ROLES = {
+  BATSMAN:       'Batsman',
+  BOWLER:        'Bowler',
+  ALL_ROUNDER:   'All-Rounder',
+  WICKET_KEEPER: 'Wicket-Keeper',
 };
 
-const ALL_POSITION_IDS = Object.values(POSITION_IDS);
+const ALL_ROLES = Object.values(ROLES);
 
 const BATSMAN_SLOT_INDEX = 0;
 
 const ROSTER_SLOTS = [
-  { name: 'Batsman',      max: 3, roles: [POSITION_IDS.BATSMAN, POSITION_IDS.TOP_ORDER_BATTER, POSITION_IDS.MIDDLE_ORDER_BATTER, POSITION_IDS.WICKETKEEPER] },
-  { name: 'Bowler',        max: 3, roles: [POSITION_IDS.BOWLER] },
-  { name: 'All-rounder',   max: 1, roles: [POSITION_IDS.ALLROUNDER, POSITION_IDS.BATTING_ALLROUNDER, POSITION_IDS.BOWLING_ALLROUNDER] },
-  { name: 'Flex',          max: 1, roles: ALL_POSITION_IDS },
-  { name: 'Bench',         max: 3, roles: ALL_POSITION_IDS },
+  { name: 'Batsman',      max: 2, roles: [ROLES.BATSMAN, ROLES.WICKET_KEEPER] },
+  { name: 'Bowler',        max: 3, roles: [ROLES.BOWLER] },
+  { name: 'All-rounder',   max: 1, roles: [ROLES.ALL_ROUNDER] },
+  { name: 'Wicket-keeper', max: 1, roles: [ROLES.WICKET_KEEPER] },
+  { name: 'Flex',          max: 1, roles: ALL_ROLES },
+  { name: 'Bench',         max: 3, roles: ALL_ROLES },
 ];
 
 /**
- * Simulates greedy slot assignment for a list of position IDs (in draft order).
- * Returns how many are in each slot and how many WKs are in the batsman slot.
+ * Simulates greedy slot assignment for a list of roles (in draft order).
+ * Returns how many are in each slot.
  */
-function assignToSlots(positionIds: string[]): { slotFilled: number[]; wkInBatsman: number } {
+function assignToSlots(roles: string[]): { slotFilled: number[] } {
   const slotFilled = ROSTER_SLOTS.map(() => 0);
-  let wkInBatsman = 0;
 
-  for (const posId of positionIds) {
+  for (const role of roles) {
     for (let i = 0; i < ROSTER_SLOTS.length; i++) {
-      if (ROSTER_SLOTS[i].roles.includes(posId) && slotFilled[i] < ROSTER_SLOTS[i].max) {
+      if (ROSTER_SLOTS[i].roles.includes(role) && slotFilled[i] < ROSTER_SLOTS[i].max) {
         slotFilled[i]++;
-        if (i === BATSMAN_SLOT_INDEX && posId === POSITION_IDS.WICKETKEEPER) {
-          wkInBatsman++;
-        }
         break;
       }
     }
   }
 
-  return { slotFilled, wkInBatsman };
+  return { slotFilled };
 }
 
 /**
- * Validates whether a player with the given position can be added to a team
- * that already has the given list of drafted position IDs.
+ * Validates whether a player with the given role can be added to a team
+ * that already has the given list of drafted roles.
  * Returns null if valid, or an error message string if invalid.
  */
-function validateRosterFit(existingPositionIds: string[], newPositionId: string): string | null {
-  const before = assignToSlots(existingPositionIds);
+function validateRosterFit(existingRoles: string[], newRole: string): string | null {
+  const before = assignToSlots(existingRoles);
 
   // Check if the new player fits in any slot
-  let fitsSlotIndex = -1;
+  let fitsSlot = false;
   for (let i = 0; i < ROSTER_SLOTS.length; i++) {
-    if (ROSTER_SLOTS[i].roles.includes(newPositionId) && before.slotFilled[i] < ROSTER_SLOTS[i].max) {
-      fitsSlotIndex = i;
+    if (ROSTER_SLOTS[i].roles.includes(newRole) && before.slotFilled[i] < ROSTER_SLOTS[i].max) {
+      fitsSlot = true;
       break;
     }
   }
 
-  if (fitsSlotIndex === -1) {
-    return 'No available roster slot for this player\'s position';
-  }
-
-  // Simulate with the new player added
-  const after = assignToSlots([...existingPositionIds, newPositionId]);
-
-  // WK constraint: if all 3 batsman slots would be full with 0 WKs, reject
-  if (after.slotFilled[BATSMAN_SLOT_INDEX] >= ROSTER_SLOTS[BATSMAN_SLOT_INDEX].max && after.wkInBatsman === 0) {
-    return 'At least one of the three batsman slots must be a wicketkeeper';
+  if (!fitsSlot) {
+    return 'No available roster slot for this player\'s role';
   }
 
   return null;
 }
 
 /**
- * Gets the ordered list of position IDs for a team's existing draft picks.
+ * Gets the ordered list of roles for a team's existing draft picks.
  */
-async function getTeamDraftedPositions(client: any, leagueId: string, teamId: string): Promise<string[]> {
+async function getTeamDraftedRoles(client: any, leagueId: string, teamId: string, tournamentId: string, seasonId: string): Promise<string[]> {
   const result = await client.query(
-    `SELECT p.position_id
+    `SELECT psi.role
     FROM fantasydata.draft_picks dp
-    JOIN irldata.player p ON p.id = dp.player_id
+    JOIN irldata.player_season_info psi
+      ON psi.player_id = dp.player_id
+     AND psi.tournament_id = $3
+     AND psi.season_id = $4
     WHERE dp.league_id = $1 AND dp.fantasy_team_id = $2
     ORDER BY dp.pick_number ASC`,
-    [leagueId, teamId]
+    [leagueId, teamId, tournamentId, seasonId]
   );
-  return result.rows.map((row: any) => row.position_id);
+  return result.rows.map((row: any) => row.role);
 }
 
 /**
@@ -172,15 +160,15 @@ function isRosterFull(positionIds: string[]): boolean {
 /**
  * Checks if ALL teams in a league have full rosters.
  */
-async function areAllRostersFull(client: any, leagueId: string): Promise<boolean> {
+async function areAllRostersFull(client: any, leagueId: string, tournamentId: string, seasonId: string): Promise<boolean> {
   const teamsResult = await client.query(
     `SELECT id FROM fantasydata.fantasy_teams WHERE league_id = $1`,
     [leagueId]
   );
 
   for (const team of teamsResult.rows) {
-    const positions = await getTeamDraftedPositions(client, leagueId, team.id);
-    if (!isRosterFull(positions)) {
+    const roles = await getTeamDraftedRoles(client, leagueId, team.id, tournamentId, seasonId);
+    if (!isRosterFull(roles)) {
       return false;
     }
   }
@@ -188,14 +176,224 @@ async function areAllRostersFull(client: any, leagueId: string): Promise<boolean
   return true;
 }
 
+// ── Roster column mapping ────────────────────────────────────────────
+
+interface DraftedPlayer {
+  player_id: string;
+  role: string;
+}
+
+interface RosterAssignment {
+  bat1: string | null;
+  bat2: string | null;
+  wicket1: string | null;
+  bowl1: string | null;
+  bowl2: string | null;
+  bowl3: string | null;
+  all1: string | null;
+  flex1: string | null;
+  bench1: string | null;
+  bench2: string | null;
+  bench3: string | null;
+  captain: string | null;
+  viceCaptain: string | null;
+}
+
 /**
- * Ends the draft for a league: clears draft state and sets league status to active.
+ * Assigns drafted players to concrete roster columns.
+ * Players should be ordered by rank (best first).
+ * Uses the same greedy slot logic as validation, then maps to DB columns.
+ */
+function assignPlayersToRoster(players: DraftedPlayer[]): RosterAssignment {
+  // Slot indices: 0=Batsman(2), 1=Bowler(3), 2=All-rounder(1), 3=Wicket-keeper(1), 4=Flex(1), 5=Bench(3)
+  const slotPlayers: DraftedPlayer[][] = ROSTER_SLOTS.map(() => []);
+  const activePlayerIds: string[] = [];
+
+  for (const player of players) {
+    for (let i = 0; i < ROSTER_SLOTS.length; i++) {
+      if (ROSTER_SLOTS[i].roles.includes(player.role) && slotPlayers[i].length < ROSTER_SLOTS[i].max) {
+        slotPlayers[i].push(player);
+        if (i !== 5) { // not bench
+          activePlayerIds.push(player.player_id);
+        }
+        break;
+      }
+    }
+  }
+
+  return {
+    bat1: slotPlayers[0][0]?.player_id ?? null,
+    bat2: slotPlayers[0][1]?.player_id ?? null,
+    bowl1: slotPlayers[1][0]?.player_id ?? null,
+    bowl2: slotPlayers[1][1]?.player_id ?? null,
+    bowl3: slotPlayers[1][2]?.player_id ?? null,
+    all1: slotPlayers[2][0]?.player_id ?? null,
+    wicket1: slotPlayers[3][0]?.player_id ?? null,
+    flex1: slotPlayers[4][0]?.player_id ?? null,
+    bench1: slotPlayers[5][0]?.player_id ?? null,
+    bench2: slotPlayers[5][1]?.player_id ?? null,
+    bench3: slotPlayers[5][2]?.player_id ?? null,
+    captain: activePlayerIds[0] ?? null,
+    viceCaptain: activePlayerIds[1] ?? null,
+  };
+}
+
+/**
+ * Generates a round-robin schedule for the given teams over numWeeks weeks.
+ * Uses the circle method. If odd team count, one team gets a bye each round.
+ * Cycles through rounds if numWeeks > unique rounds.
+ */
+function generateRoundRobinSchedule(teamIds: string[], numWeeks: number): [string, string][][] {
+  const n = teamIds.length;
+  const roundsPerCycle = n - 1;
+
+  // Generate all unique rounds using circle method (fix teams[0], rotate the rest)
+  const rotating = teamIds.slice(1);
+  const allRounds: [string, string][][] = [];
+
+  for (let r = 0; r < roundsPerCycle; r++) {
+    const current = [teamIds[0], ...rotating];
+    const round: [string, string][] = [];
+
+    for (let i = 0; i < n / 2; i++) {
+      round.push([current[i], current[n - 1 - i]]);
+    }
+
+    allRounds.push(round);
+    // Rotate: move last element to front
+    rotating.unshift(rotating.pop()!);
+  }
+
+  // Fill weeks by cycling through rounds
+  const schedule: [string, string][][] = [];
+  for (let week = 0; week < numWeeks; week++) {
+    schedule.push(allRounds[week % allRounds.length]);
+  }
+
+  return schedule;
+}
+
+/**
+ * Ends the draft for a league:
+ * 1. Sets league status to 'active'
+ * 2. Calculates regular-season weeks (total weeks minus playoff weeks)
+ * 3. Generates round-robin matchup schedule
+ * 4. Creates fantasy_team_instance rows for every team/week with roster from draft picks
+ * 5. Creates fantasy_matchups linking paired instances
  */
 async function performEndDraft(client: any, leagueId: string): Promise<void> {
+  // 1. Set league to active
   await client.query(
     `UPDATE fantasydata.leagues SET status = 'active' WHERE id = $1`,
     [leagueId]
   );
+
+  // 2. Get tournament weeks and league teams (parallel)
+  const [leagueInfo, teamsResult] = await Promise.all([
+    client.query(
+      `SELECT l.tournament_id, l.season_id, ti.weeks
+       FROM fantasydata.leagues l
+       JOIN irldata.tournament_info ti ON ti.id = l.tournament_id
+       WHERE l.id = $1`,
+      [leagueId]
+    ),
+    client.query(
+      `SELECT id FROM fantasydata.fantasy_teams WHERE league_id = $1 ORDER BY draft_order`,
+      [leagueId]
+    ),
+  ]);
+  const { weeks: totalWeeks, season_id, tournament_id } = leagueInfo.rows[0];
+  const teamIds: string[] = teamsResult.rows.map((r: any) => r.id);
+  const teamCount = teamIds.length;
+
+  // 3. Calculate playoff weeks and regular-season weeks
+  const playoffWeeks = Math.ceil(Math.log2(teamCount));
+  const regularWeeks = totalWeeks - playoffWeeks;
+
+  // 4. Generate round-robin schedule
+  const schedule = generateRoundRobinSchedule(teamIds, regularWeeks);
+
+  // 5. Build roster assignment for each team from draft picks (single query)
+  const allPicksResult = await client.query(
+    `SELECT dp.fantasy_team_id, dp.player_id, psi.role
+     FROM fantasydata.draft_picks dp
+     JOIN irldata.player_season_info psi
+       ON psi.player_id = dp.player_id
+       AND psi.season_id = $2
+       AND psi.tournament_id = $3
+     WHERE dp.league_id = $1
+     ORDER BY dp.fantasy_team_id, COALESCE(psi.rank, 999) ASC`,
+    [leagueId, season_id, tournament_id]
+  );
+
+  const teamRosters: Record<string, RosterAssignment> = {};
+  const picksByTeam: Record<string, DraftedPlayer[]> = {};
+  for (const row of allPicksResult.rows) {
+    if (!picksByTeam[row.fantasy_team_id]) {
+      picksByTeam[row.fantasy_team_id] = [];
+    }
+    picksByTeam[row.fantasy_team_id].push({ player_id: row.player_id, role: row.role });
+  }
+  for (const teamId of teamIds) {
+    teamRosters[teamId] = assignPlayersToRoster(picksByTeam[teamId] ?? []);
+  }
+
+  // 6. Create instances and matchups for each regular-season week (batched)
+  for (let week = 1; week <= regularWeeks; week++) {
+    // Batch-insert all team instances for this week
+    const instanceValues: any[] = [];
+    const instancePlaceholders: string[] = [];
+    let paramIdx = 1;
+    for (const teamId of teamIds) {
+      const r = teamRosters[teamId];
+      const placeholders = [`gen_random_uuid()`];
+      for (let i = 0; i < 15; i++) {
+        placeholders.push(`$${paramIdx++}`);
+      }
+      instancePlaceholders.push(`(${placeholders.join(',')})`);
+      instanceValues.push(
+        teamId, week, r.captain, r.viceCaptain,
+        r.bat1, r.bat2, r.wicket1,
+        r.bowl1, r.bowl2, r.bowl3,
+        r.all1, r.flex1,
+        r.bench1, r.bench2, r.bench3
+      );
+    }
+
+    const insResult = await client.query(
+      `INSERT INTO fantasydata.fantasy_team_instance
+        (id, fantasy_team_id, match_num, captain, vice_captain,
+         bat1, bat2, wicket1, bowl1, bowl2, bowl3, all1, flex1,
+         bench1, bench2, bench3)
+       VALUES ${instancePlaceholders.join(', ')}
+       RETURNING id, fantasy_team_id`,
+      instanceValues
+    );
+
+    const instanceIds: Record<string, string> = {};
+    for (const row of insResult.rows) {
+      instanceIds[row.fantasy_team_id] = row.id;
+    }
+
+    // Batch-insert all matchups for this week
+    const weekMatchups = schedule[week - 1];
+    if (weekMatchups.length > 0) {
+      const matchupValues: any[] = [];
+      const matchupPlaceholders: string[] = [];
+      let mParamIdx = 1;
+      for (const [t1, t2] of weekMatchups) {
+        matchupPlaceholders.push(`(gen_random_uuid(), $${mParamIdx++}, $${mParamIdx++}, $${mParamIdx++}, $${mParamIdx++})`);
+        matchupValues.push(leagueId, week, instanceIds[t1], instanceIds[t2]);
+      }
+
+      await client.query(
+        `INSERT INTO fantasydata.fantasy_matchups
+          (id, league_id, match_num, fantasy_team_instance1_id, fantasy_team_instance2_id)
+         VALUES ${matchupPlaceholders.join(', ')}`,
+        matchupValues
+      );
+    }
+  }
 }
 
 /**
@@ -217,14 +415,17 @@ async function verifyLeagueMembership(
 async function advanceDraftState(
   client: any,
   leagueId: string,
-  pickNumber: number
+  pickNumber: number,
+  tournamentId: string,
+  seasonId: string
 ): Promise<{ nextTeamId: string | null; nextPickDeadline: Date | null; draftComplete: boolean }> {
   // Check if all rosters are full
-  const allFull = await areAllRostersFull(client, leagueId);
+  const allFull = await areAllRostersFull(client, leagueId, tournamentId, seasonId);
 
   if (allFull) {
-    // Draft is complete
-    await performEndDraft(client, leagueId);
+    // Draft is complete — don't call performEndDraft here.
+    // The scheduler will queue an endDraft mutation via SQS,
+    // which triggers the onDraftEnd subscription for clients.
     return { nextTeamId: null, nextPickDeadline: null, draftComplete: true };
   }
 
@@ -411,7 +612,7 @@ export const lambdaHandler = async (
 
         // Verify it's the user's team's turn
         const stateCheck = await client.query(
-          `SELECT lds.current_fantasy_team_id, lds.current_pick_number, l.status
+          `SELECT lds.current_fantasy_team_id, lds.current_pick_number, l.status, l.tournament_id, l.season_id
           FROM fantasydata.league_draft_state lds
           JOIN fantasydata.leagues l ON l.id = lds.league_id
           WHERE lds.league_id = $1`,
@@ -431,17 +632,20 @@ export const lambdaHandler = async (
           throw new Error('It is not your turn to pick');
         }
 
+        const { tournament_id: draftTournamentId, season_id: draftSeasonId } = currentState;
+
         // Validate roster fit
-        const existingPositions = await getTeamDraftedPositions(client, leagueId, teamId);
-        const playerPositionResult = await client.query(
-          `SELECT position_id FROM irldata.player WHERE id = $1`,
-          [playerId]
+        const existingRoles = await getTeamDraftedRoles(client, leagueId, teamId, draftTournamentId, draftSeasonId);
+        const playerRoleResult = await client.query(
+          `SELECT psi.role FROM irldata.player_season_info psi
+           WHERE psi.player_id = $1 AND psi.tournament_id = $2 AND psi.season_id = $3`,
+          [playerId, draftTournamentId, draftSeasonId]
         );
-        if (playerPositionResult.rowCount === 0) {
-          throw new Error('Player not found');
+        if (playerRoleResult.rowCount === 0) {
+          throw new Error('Player not found in this tournament/season');
         }
-        const playerPositionId = playerPositionResult.rows[0].position_id;
-        const rosterError = validateRosterFit(existingPositions, playerPositionId);
+        const playerRole = playerRoleResult.rows[0].role;
+        const rosterError = validateRosterFit(existingRoles, playerRole);
         if (rosterError) {
           throw new Error(rosterError);
         }
@@ -461,7 +665,7 @@ export const lambdaHandler = async (
           const timestamp = pickResult.rows[0].pick_time?.toISOString() ?? new Date().toISOString();
 
           // Advance draft state
-          const { nextTeamId, nextPickDeadline, draftComplete } = await advanceDraftState(client, leagueId, pickNumber);
+          const { nextTeamId, nextPickDeadline, draftComplete } = await advanceDraftState(client, leagueId, pickNumber, draftTournamentId, draftSeasonId);
 
           await client.query('COMMIT');
 
@@ -517,14 +721,13 @@ export const lambdaHandler = async (
         const teamId = draftState.current_fantasy_team_id;
         const { season_id, tournament_id } = draftState;
 
-        // Get this team's existing drafted positions
-        const existingPositions = await getTeamDraftedPositions(client, leagueId, teamId);
+        // Get this team's existing drafted roles
+        const existingRoles = await getTeamDraftedRoles(client, leagueId, teamId, tournament_id, season_id);
 
         // Find the best available player that passes roster validation
         const bestPlayerResult = await client.query(
-          `SELECT psi.player_id, p.position_id
+          `SELECT psi.player_id, psi.role
           FROM irldata.player_season_info psi
-          JOIN irldata.player p ON p.id = psi.player_id
           WHERE psi.season_id = $1
             AND psi.tournament_id = $2
             AND psi.player_id NOT IN (
@@ -536,7 +739,7 @@ export const lambdaHandler = async (
 
         let playerId: string | null = null;
         for (const row of bestPlayerResult.rows) {
-          const error = validateRosterFit(existingPositions, row.position_id);
+          const error = validateRosterFit(existingRoles, row.role);
           if (!error) {
             playerId = row.player_id;
             break;
@@ -570,7 +773,7 @@ export const lambdaHandler = async (
           const timestamp = pickResult.rows[0].pick_time?.toISOString() ?? new Date().toISOString();
 
           // Advance draft state
-          const { nextTeamId, nextPickDeadline, draftComplete } = await advanceDraftState(client, leagueId, expectedPickNumber);
+          const { nextTeamId, nextPickDeadline, draftComplete } = await advanceDraftState(client, leagueId, expectedPickNumber, tournament_id, season_id);
 
           await client.query('COMMIT');
 

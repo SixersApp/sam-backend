@@ -30,12 +30,14 @@ app.get("/fantasy-team-instance", async (req: Request, res: Response) => {
     const pool = getPool();
     client = await pool.connect();
 
-    const result = await client.query(
+    // Get the instance + league context in one query
+    const instanceResult = await client.query(
       `
-      SELECT fti.*
+      SELECT fti.*, l.season_id, l.tournament_id
       FROM fantasydata.fantasy_team_instance fti
       JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
-      WHERE fti.fantasy_team_id = $1 
+      JOIN fantasydata.leagues l ON l.id = ft.league_id
+      WHERE fti.fantasy_team_id = $1
         AND fti.match_num = $2
         AND ft.user_id = $3
       LIMIT 1;
@@ -43,62 +45,125 @@ app.get("/fantasy-team-instance", async (req: Request, res: Response) => {
       [teamId, matchNum, userId]
     );
 
-    if (result.rowCount === 0) {
+    if (instanceResult.rowCount === 0) {
       return res.status(404).json({
         message: "Fantasy team instance not found or you do not have access to it"
       });
     }
 
-    const instance = result.rows[0];
+    const instance = instanceResult.rows[0];
+    const { season_id, tournament_id } = instance;
 
-    // Get player data for all positions
     const slots = [
       'bat1', 'bat2',
       'wicket1',
       'bowl1', 'bowl2', 'bowl3',
       'all1',
-      'bench1', 'bench2', 'bench3', 'bench4'
+      'flex1',
+      'bench1', 'bench2', 'bench3'
     ];
 
-    const playerIds = slots.map(slot => instance[slot]).filter(id => id !== null);
+    const playerIds = slots.map(slot => instance[slot]).filter((id: string | null) => id !== null);
 
     const players: Record<string, any> = {};
-    
+
     if (playerIds.length > 0) {
+      // For each player: get info, find their real match for this match_num, and get performance
       const playersResult = await client.query(
         `
-        SELECT 
+        SELECT
           p.id,
           p.player_name,
           p.full_name,
           p.image,
-          p.position_id,
-          pos.name AS role,
+          psi.role,
           p.country_id,
           c.name AS country_name,
-          c.image AS country_image
+          c.image AS country_image,
+
+          mi.id AS match_id,
+          mi.match_date,
+          mi.status AS match_status,
+          ht.name AS home_team_name,
+          ht.image AS home_team_image,
+          ht.abbreviation AS home_team_abbreviation,
+          at.name AS away_team_name,
+          at.image AS away_team_image,
+          at.abbreviation AS away_team_abbreviation,
+
+          pp.runs_scored,
+          pp.balls_faced,
+          pp.fours,
+          pp.sixes,
+          pp.runs_conceded,
+          pp.balls_bowled,
+          pp.wickets_taken,
+          pp.catches,
+          pp.run_outs,
+          pp.catches_dropped,
+          pp.not_out
+
         FROM irldata.player p
-        LEFT JOIN irldata.position pos ON pos.id = p.position_id
         LEFT JOIN irldata.country_info c ON c.id = p.country_id
+
+        LEFT JOIN irldata.player_season_info psi
+          ON psi.player_id = p.id
+          AND psi.season_id = $2
+          AND psi.tournament_id = $3
+
+        LEFT JOIN irldata.match_info mi
+          ON mi.season_id = $2
+          AND (
+            (mi.home_team_id = psi.team_id AND mi.home_match_num = $4)
+            OR
+            (mi.away_team_id = psi.team_id AND mi.away_match_num = $4)
+          )
+
+        LEFT JOIN irldata.team ht ON ht.id = mi.home_team_id
+        LEFT JOIN irldata.team at ON at.id = mi.away_team_id
+
+        LEFT JOIN irldata.player_performance pp
+          ON pp.player_season_id = psi.id
+          AND pp.match_id = mi.id
+
         WHERE p.id = ANY($1);
         `,
-        [playerIds]
+        [playerIds, season_id, tournament_id, matchNum]
       );
 
-      // Create a map of player_id -> player_data
       const playersMap: Record<string, any> = {};
-      playersResult.rows.forEach((player: any) => {
-        playersMap[player.id] = player;
+      playersResult.rows.forEach((row: any) => {
+        const { id, player_name, full_name, image, role,
+                country_id, country_name, country_image,
+                match_id, match_date, match_status,
+                home_team_name, home_team_image, away_team_name, away_team_image,
+                runs_scored, balls_faced, fours, sixes,
+                runs_conceded, balls_bowled, wickets_taken,
+                catches, run_outs, catches_dropped } = row;
+
+        playersMap[id] = {
+          id, player_name, full_name, image, role,
+          country_id, country_name, country_image,
+          match: match_id ? {
+            match_id,
+            match_date,
+            status: match_status,
+            home_team_name,
+            home_team_image,
+            away_team_name,
+            away_team_image,
+          } : null,
+          performance: runs_scored !== null ? {
+            runs_scored, balls_faced, fours, sixes,
+            runs_conceded, balls_bowled, wickets_taken,
+            catches, run_outs, catches_dropped,
+          } : null,
+        };
       });
 
-      // Map each slot to its player data
       slots.forEach(slot => {
         const playerId = instance[slot];
-        if (playerId && playersMap[playerId]) {
-          players[slot] = playersMap[playerId];
-        } else {
-          players[slot] = null;
-        }
+        players[slot] = (playerId && playersMap[playerId]) ? playersMap[playerId] : null;
       });
     } else {
       slots.forEach(slot => {
@@ -149,10 +214,11 @@ app.get("/fantasy-team-instance/:id/all", async (req: Request, res: Response) =>
 
     const result = await client.query(
       `
-      SELECT fti.*
+      SELECT fti.*, l.tournament_id, l.season_id
       FROM fantasydata.fantasy_team_instance fti
       JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
-      WHERE fti.fantasy_team_id = $1 
+      JOIN fantasydata.leagues l ON l.id = ft.league_id
+      WHERE fti.fantasy_team_id = $1
         AND ft.user_id = $2
       ORDER BY fti.match_num ASC;
       `,
@@ -160,6 +226,8 @@ app.get("/fantasy-team-instance/:id/all", async (req: Request, res: Response) =>
     );
 
     const instances = result.rows;
+    const tournament_id = instances[0]?.tournament_id;
+    const season_id = instances[0]?.season_id;
 
     // Collect all unique player IDs across all instances
     const slots = [
@@ -185,22 +253,24 @@ app.get("/fantasy-team-instance/:id/all", async (req: Request, res: Response) =>
     if (allPlayerIds.size > 0) {
       const playersResult = await client.query(
         `
-        SELECT 
+        SELECT
           p.id,
           p.player_name,
           p.full_name,
           p.image,
-          p.position_id,
-          pos.name AS role,
+          psi.role,
           p.country_id,
           c.name AS country_name,
           c.image AS country_image
         FROM irldata.player p
-        LEFT JOIN irldata.position pos ON pos.id = p.position_id
         LEFT JOIN irldata.country_info c ON c.id = p.country_id
+        LEFT JOIN irldata.player_season_info psi
+          ON psi.player_id = p.id
+         AND psi.tournament_id = $2
+         AND psi.season_id = $3
         WHERE p.id = ANY($1);
         `,
-        [Array.from(allPlayerIds)]
+        [Array.from(allPlayerIds), tournament_id, season_id]
       );
 
       playersResult.rows.forEach((player: any) => {
@@ -281,11 +351,12 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
       ),
 
       team_info AS (
-          SELECT 
+          SELECT
               fti.id AS fti_id,
               ft.id AS fantasy_team_id,
               l.id AS league_id,
               l.season_id,
+              l.tournament_id,
               fti.match_num,
               fti.player_ids
           FROM fti
@@ -294,27 +365,34 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
       ),
 
       player_seasons AS (
-          SELECT 
+          SELECT
               psi.id AS player_season_id,
               psi.player_id,
               psi.team_id,
               psi.season_id,
+              psi.role,
               tinfo.match_num,
               tinfo.league_id
           FROM irldata.player_season_info psi
-          JOIN team_info tinfo ON psi.season_id = tinfo.season_id
+          JOIN team_info tinfo
+              ON psi.season_id = tinfo.season_id
+             AND psi.tournament_id = tinfo.tournament_id
           WHERE psi.player_id = ANY(tinfo.player_ids)
       ),
 
       match_lookup AS (
-          SELECT 
+          SELECT
               mi.id AS match_id,
               mi.season_id,
+              mi.tournament_id,
               mi.home_team_id,
               mi.away_team_id,
               mi.home_match_num,
               mi.away_match_num
           FROM irldata.match_info mi
+          JOIN team_info tinfo
+              ON mi.season_id = tinfo.season_id
+             AND mi.tournament_id = tinfo.tournament_id
       )
 
       SELECT 
@@ -322,10 +400,10 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
           ps.player_id,
 
           -- ✅ NEW: Player Details Added Here
-          p.player_name AS name,
+          p.full_name AS name,
           p.full_name,
           p.image AS player_image,
-          pos.name AS role,
+          ps.role,
           c.name AS country_name,
           c.image AS country_image,
 
@@ -346,15 +424,18 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
           ppa.run_outs,
           ppa.no_balls_bowled,
           ppa.catches_dropped,
+          ppa.not_out,
           ppa.inserted_at,
 
           ml.home_team_id,
           ht.name AS home_team_name,
           ht.image AS home_team_image,
+          ht.abbreviation AS home_team_abbreviation,
 
           ml.away_team_id,
           at.name AS away_team_name,
           at.image AS away_team_image,
+          at.abbreviation AS away_team_abbreviation,
 
           (
             -- 1. FIELDING
@@ -406,9 +487,8 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
 
       FROM player_seasons ps
 
-      -- ✅ NEW: Joins to get Player Details
+      -- Player Details
       JOIN irldata.player p ON p.id = ps.player_id
-      LEFT JOIN irldata.position pos ON pos.id = p.position_id
       LEFT JOIN irldata.country_info c ON c.id = p.country_id
 
       JOIN match_lookup ml
@@ -462,7 +542,7 @@ app.post("/fantasy-team-instance/:ftiId/swap-slots", async (req: Request, res: R
   }
 
   // Validate slot names (basic format check)
-  const validSlotPattern = /^(bat[1-2]|wicket1|bowl[1-3]|all1|bench[1-6])$/;
+  const validSlotPattern = /^(bat[1-2]|wicket1|bowl[1-3]|all1|flex1|bench[1-6])$/;
   if (!validSlotPattern.test(slot1) || !validSlotPattern.test(slot2)) {
     return res.status(400).json({ message: "Invalid slot name format" });
   }
