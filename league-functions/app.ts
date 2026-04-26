@@ -37,6 +37,7 @@ app.get("/leagues", async (req: Request, res: Response) => {
 	ft.id as user_team_id,
     ti.abbreviation AS tournament_abbr,
 
+    ti.weeks AS total_games,
     s.end_year AS season_year,
 
     (
@@ -126,6 +127,7 @@ app.get("/leagues/join/:joinCode", async (req: Request, res: Response) => {
         l.join_code,
         l.season_id,
         ti.abbreviation AS tournament_abbr,
+        ti.weeks AS total_games,
         s.end_year AS season_year,
         (
           SELECT json_agg(
@@ -262,6 +264,7 @@ app.post("/leagues/join/:joinCode", async (req: Request, res: Response) => {
         l.season_id,
         $1::uuid as user_team_id,
         ti.abbreviation AS tournament_abbr,
+        ti.weeks AS total_games,
         s.end_year AS season_year,
         (
           SELECT json_agg(
@@ -388,6 +391,7 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
             l.max_teams,
             l.join_code,
             l.season_id,
+            ti.weeks AS total_games,
             (
                 SELECT jsonb_build_object(
                     'time_per_pick', lds.time_per_pick,
@@ -404,6 +408,7 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
             ) AS scoring_rules
         FROM fantasydata.leagues l
         JOIN fantasydata.fantasy_teams ft ON ft.league_id = l.id
+        JOIN irldata.tournament_info ti ON ti.id = l.tournament_id
         WHERE ft.user_id = $1
           AND l.id = $2;
     `;
@@ -773,6 +778,7 @@ app.put("/leagues/:leagueId/draft-order", async (req: Request, res: Response) =>
         l.join_code,
         l.season_id,
         ti.abbreviation AS tournament_abbr,
+        ti.weeks AS total_games,
         s.end_year AS season_year,
         (
           SELECT json_agg(
@@ -912,6 +918,18 @@ app.post("/leagues", async (req: Request, res: Response) => {
     const pool = getPool();
     client = await pool.connect();
 
+    // Look up tournament's default max_teams to use as fallback
+    const tournamentResult = await client.query(
+      `SELECT max_teams FROM irldata.tournament_info WHERE id = $1`,
+      [tournament_id]
+    );
+
+    if (tournamentResult.rowCount === 0) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    const resolvedMaxTeams = max_teams || tournamentResult.rows[0].max_teams;
+
     // Call the stored procedure to create league with rules, using latest season via subquery
     const result = await client.query(
       `SELECT fantasydata.create_league_with_rules(
@@ -929,7 +947,7 @@ app.post("/leagues", async (req: Request, res: Response) => {
       [
         name,
         tournament_id,
-        max_teams || 10,
+        resolvedMaxTeams,
         scoring_rules ? JSON.stringify(scoring_rules) : null,
         userId,
         JSON.stringify({ team_name: team.name, team_color: team.color, abbreviation: team.abbreviation, team_icon: team.icon ?? null })
@@ -952,6 +970,7 @@ app.post("/leagues", async (req: Request, res: Response) => {
         l.season_id,
         ft.id as user_team_id,
         ti.abbreviation AS tournament_abbr,
+        ti.weeks AS total_games,
         s.end_year AS season_year,
         (
             SELECT json_agg(

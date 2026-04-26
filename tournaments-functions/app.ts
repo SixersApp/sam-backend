@@ -26,6 +26,8 @@ app.get("/tournaments", async (req: Request, res: Response) => {
         t.id,
         t.name,
         t.abbreviation,
+        t.max_teams,
+        t.weeks,
         (
           SELECT json_agg(s.* ORDER BY s.start_year DESC)
           FROM irldata.season s
@@ -77,7 +79,11 @@ app.get("/tournaments/:tournamentId", async (req: Request, res: Response) => {
     const result = await client.query(
       `
       SELECT
-        t.*,
+        t.id,
+        t.name,
+        t.abbreviation,
+        t.max_teams,
+        t.weeks,
         (
           SELECT json_agg(s.*)
           FROM irldata.season s

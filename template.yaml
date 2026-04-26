@@ -35,7 +35,7 @@ Globals:
   Api:
     # This configures API Gateway to answer the browser's "OPTIONS" check
     Cors:
-      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS,PATCH'"
       AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
       AllowOrigin: "'*'" # <--- Note the quoting: "'*'"
 
@@ -62,8 +62,52 @@ Parameters:
   PrivateSubnetFourId:
     Type: AWS::EC2::Subnet::Id
     Description: A private subnet ID for the lambda
-
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC ID for creating VPC endpoints
 Resources:
+  # ----------------------------------------------------------
+  # VPC Endpoint for SQS (so VPC Lambdas can reach SQS)
+  # ----------------------------------------------------------
+  SqsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sqs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnetOneId
+      SecurityGroupIds:
+        - !Ref LambdaSecurityGroupId
+
+  # ----------------------------------------------------------
+  # AppSync Events API (real-time pub/sub for match scoring)
+  # ----------------------------------------------------------
+  MatchEventsApi:
+    Type: AWS::AppSync::Api
+    Properties:
+      Name: match-events-api
+      EventConfig:
+        AuthProviders:
+          - AuthType: AWS_IAM
+          - AuthType: AMAZON_COGNITO_USER_POOLS
+            CognitoConfig:
+              UserPoolId: 'us-west-2_4xTIIoc8k'
+              AwsRegion: us-west-2
+        ConnectionAuthModes:
+          - AuthType: AMAZON_COGNITO_USER_POOLS
+        DefaultPublishAuthModes:
+          - AuthType: AWS_IAM
+        DefaultSubscribeAuthModes:
+          - AuthType: AMAZON_COGNITO_USER_POOLS
+
+  MatchEventsChannelNamespace:
+    Type: AWS::AppSync::ChannelNamespace
+    Properties:
+      ApiId: !GetAtt MatchEventsApi.ApiId
+      Name: default
+
   RdsCertLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -98,8 +142,246 @@ Resources:
             UserPoolArn: !Ref CognitoUserPoolArn
         DefaultAuthorizer: MyCognitoAuthorizer
         AddDefaultAuthorizerToCorsPreflight: false
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS,PATCH'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS,PATCH'"
 
-  MatchScoringFunction:
+  DraftAPI:
+    Type: AWS::Serverless::GraphQLApi
+    Properties:
+      SchemaUri: draft-functions/schema.graphql
+      Auth:
+        Type: AMAZON_COGNITO_USER_POOLS
+        UserPool:
+          UserPoolId: 'us-west-2_4xTIIoc8k'
+          AwsRegion: us-west-2
+          DefaultAction: ALLOW
+        Additional:
+          - Type: AWS_IAM
+      DataSources:
+        Lambda:
+          DraftDataSource:
+            FunctionArn: !GetAtt DraftFunction.Arn
+          DraftSchedulerDataSource:
+            FunctionArn: !GetAtt DraftSchedulerFunction.Arn
+      Functions:
+        getDraftPicksFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/getDraftPicks.js
+        getDraftStateFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/getDraftState.js
+        postDraftPickFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/postDraftPick.js
+        startDraftFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/startDraft.js
+        autoPickDraftPlayerFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/autoPickDraftPlayer.js
+        endDraftFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftDataSource
+          CodeUri: ./draft-functions/resolvers/endDraft.js
+        schedulePickFunction:
+          Runtime:
+            Name: APPSYNC_JS
+            Version: 1.0.0
+          DataSource: DraftSchedulerDataSource
+          CodeUri: ./draft-functions/resolvers/schedulePick.js
+      Resolvers:
+        Query:
+          getDraftPicks:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - getDraftPicksFunction
+          getDraftState:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - getDraftStateFunction
+        Mutation:
+          postDraftPick:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - postDraftPickFunction
+              - schedulePickFunction
+          startDraft:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - startDraftFunction
+              - schedulePickFunction
+          autoPickDraftPlayer:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - autoPickDraftPlayerFunction
+              - schedulePickFunction
+          endDraft:
+            Runtime:
+              Name: APPSYNC_JS
+              Version: 1.0.0
+            Pipeline:
+              - endDraftFunction
+
+  # ----------------------------------------------------------
+  # Draft Functions
+  # ----------------------------------------------------------
+  DraftFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}'
+          DB_USER: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}'
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
+      CodeUri: draft-functions/
+      Handler: app.lambdaHandler
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - /opt/nodejs/*
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # SQS Queue for delayed autopick messages (non-VPC, no endpoint needed)
+  # ----------------------------------------------------------
+  AutoPickQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: autopick-queue
+      VisibilityTimeout: 30
+
+  # ----------------------------------------------------------
+  # AutoPick Invoker Function (triggered by SQS)
+  # ----------------------------------------------------------
+  AutoPickInvokerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      Environment:
+        Variables:
+          APPSYNC_ENDPOINT: !GetAtt DraftAPI.GraphQLUrl
+      CodeUri: autopick-invoker/
+      Handler: app.lambdaHandler
+      Events:
+        AutoPickSQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt AutoPickQueue.Arn
+            BatchSize: 1
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub '${DraftAPI.Arn}/types/Mutation/fields/autoPickDraftPlayer'
+                - !Sub '${DraftAPI.Arn}/types/Mutation/fields/endDraft'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # Draft Scheduler Function (non-VPC, sends delayed SQS messages)
+  # ----------------------------------------------------------
+  DraftSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      Environment:
+        Variables:
+          AUTOPICK_QUEUE_URL: !Ref AutoPickQueue
+      CodeUri: draft-scheduler-function/
+      Handler: app.lambdaHandler
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt AutoPickQueue.QueueName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  DraftRestFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
@@ -123,8 +405,66 @@ Resources:
       Layers:
         - !Ref RdsCertLayer
         - !Ref SharedUtilsLayer
+      CodeUri: draft-functions/
+      Handler: rest-app.lambdaHandler
+      Events:
+        GetDraftPlayers:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /draft/players
+            Method: get
+        GetAvailablePlayers:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /draft/players/available
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - /opt/nodejs/*
+        EntryPoints:
+          - rest-app.ts
+
+  MatchScoringFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+          MATCH_EVENTS_QUEUE_URL: !Ref MatchEventsQueue
+          MATCHUP_RESOLUTION_QUEUE_URL: !Ref MatchupResolutionQueue
+      Layers:
+        - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
       CodeUri: match-scoring-functions/
       Handler: app.lambdaHandler
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt MatchEventsQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt MatchupResolutionQueue.QueueName
       Events:
         CreateMatch:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
@@ -132,6 +472,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /scoring/createMatch
             Method: post
+        GetMatchScoring:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /scoring/{matchId}
+            Method: get
         StartMatchScoring:
           Type: Api
           Properties:
@@ -144,6 +490,18 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /scoring/{matchId}/addEvent
             Method: post
+        UndoEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /scoring/{matchId}/undoEvent
+            Method: post
+        EndMatch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /scoring/{matchId}/endMatch
+            Method: patch
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
@@ -154,6 +512,118 @@ Resources:
         External:
           - /opt/nodejs/*
           - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # SQS Queue for match event publishing (VPC Lambda -> SQS -> non-VPC Lambda -> AppSync Events)
+  # ----------------------------------------------------------
+  MatchEventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: match-events-queue
+      VisibilityTimeout: 30
+
+  # ----------------------------------------------------------
+  # Event Publisher Function (non-VPC, triggered by SQS, publishes to AppSync Events)
+  # ----------------------------------------------------------
+  EventPublisherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 15
+      Environment:
+        Variables:
+          APPSYNC_EVENTS_ENDPOINT: !Sub "https://${MatchEventsApi.Dns.Http}"
+      CodeUri: event-publisher/
+      Handler: app.lambdaHandler
+      Events:
+        MatchEventsSQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MatchEventsQueue.Arn
+            BatchSize: 1
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - appsync:EventPublish
+              Resource:
+                - !Sub '${MatchEventsApi.ApiArn}/channelNamespace/default'
+                - !Sub '${MatchEventsApi.ApiArn}/channelNamespace/default/*'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # SQS Queue for matchup resolution (triggered when an IRL match ends)
+  # ----------------------------------------------------------
+  MatchupResolutionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: matchup-resolution-queue
+      VisibilityTimeout: 60
+
+  TradeExecutionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: trade-execution-queue
+      VisibilityTimeout: 60
+
+  # ----------------------------------------------------------
+  # Matchup Resolver Function (VPC, triggered by SQS, resolves fantasy matchup winners)
+  # ----------------------------------------------------------
+  MatchupResolverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
+      CodeUri: matchup-resolver/
+      Handler: app.lambdaHandler
+      Events:
+        MatchupResolutionSQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MatchupResolutionQueue.Arn
+            BatchSize: 1
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - /opt/nodejs/*
         EntryPoints:
           - app.ts
 
@@ -262,6 +732,66 @@ Resources:
         EntryPoints:
           - app.ts
   # ----------------------------------------------------------
+  # Account Functions (replaces UserDataFunction endpoints)
+  # ----------------------------------------------------------
+
+  AccountDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
+      CodeUri: account-functions/
+      Handler: app.lambdaHandler
+      Events:
+        AccountSignup:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /account/signup
+            Method: put
+        GetAccountProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /account/profile
+            Method: get
+        UpdateAccountProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /account/profile
+            Method: patch
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - /opt/nodejs/*
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
   # Tournament Functions
   # ----------------------------------------------------------
   TournamentDataFunction:
@@ -356,6 +886,18 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /seasons/{seasonId}
             Method: get
+        GetPlayerStats:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /players/{playerId}/stats
+            Method: get
+        GetPlayerPerformances:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /players/{playerId}/performances
+            Method: get
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
@@ -402,6 +944,12 @@ Resources:
           Properties:
             RestApiId: !Ref MyApi
             Path: /matches/feed
+            Method: get
+        GetActiveMatches:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /matches/active
             Method: get
         GetMatch:
           Type: Api
@@ -702,6 +1250,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /matchups/feed
             Method: get
+        GetMatchupsByLeagueWeek:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /matchups/league/{leagueId}/week/{matchNum}
+            Method: get
     Metadata:
       # Manage esbuild properties
       BuildMethod: esbuild
@@ -714,6 +1268,9 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # ----------------------------------------------------------
+  # Trade Functions
+  # ----------------------------------------------------------
   # ----------------------------------------------------------
   # Trade Functions
   # ----------------------------------------------------------

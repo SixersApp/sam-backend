@@ -1,0 +1,16 @@
+{
+  "name": "draft-functions",
+  "version": "1.0.0",
+  "description": "Draft API Functions",
+  "main": "app.js",
+  "author": "SAM CLI",
+  "license": "MIT",
+  "dependencies": {
+    "esbuild": "^0.14.14"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.92",
+    "@types/node": "^20.5.7",
+    "typescript": "^4.8.4"
+  }
+}

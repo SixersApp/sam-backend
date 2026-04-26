@@ -1,0 +1,12 @@
+{
+  "field": "postDraftPick",
+  "arguments": {
+    "input": {
+      "teamId": "team-004",
+      "playerId": "player-104",
+      "roundNumber": 1,
+      "pickNumber": 4,
+      "leagueId": "league-abc"
+    }
+  }
+}

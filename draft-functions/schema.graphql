@@ -1,0 +1,88 @@
+type DraftPick @aws_cognito_user_pools @aws_iam {
+  teamId: String!
+  playerId: String!
+  roundNumber: Int!
+  pickNumber: Int!
+  leagueId: String!
+  timestamp: String!
+}
+
+type DraftPickResult @aws_cognito_user_pools @aws_iam {
+  pick: DraftPick!
+  nextTeamId: String
+  nextPickExpiresAt: String
+  leagueId: String!
+}
+
+type DraftState {
+  leagueId: String!
+  picks: [DraftPick!]!
+  currentTeamId: String
+  currentRound: Int!
+  currentPick: Int!
+  pickExpiresAt: String
+  status: String!
+}
+
+input DraftPickInput {
+  teamId: String!
+  playerId: String!
+  roundNumber: Int!
+  pickNumber: Int!
+  leagueId: String!
+}
+
+input AutoPickInput {
+  leagueId: String!
+  expectedPickNumber: Int!
+}
+
+input DraftOrderInput {
+  teamId: String!
+  order: Int!
+}
+
+input StartDraftInput {
+  leagueId: String!
+  draftOrder: [DraftOrderInput!]
+}
+
+type DraftOrderEntry {
+  teamId: String!
+  order: Int!
+}
+
+type DraftStartResult {
+  leagueId: String!
+  currentTeamId: String!
+  currentRound: Int!
+  currentPick: Int!
+  pickExpiresAt: String!
+  draftOrder: [DraftOrderEntry!]!
+}
+
+type DraftEndResult @aws_cognito_user_pools @aws_iam {
+  leagueId: String!
+  status: String!
+}
+
+type Query {
+  getDraftPicks(leagueId: String!): [DraftPick!]!
+  getDraftState(leagueId: String!): DraftState!
+}
+
+type Mutation {
+  postDraftPick(input: DraftPickInput!): DraftPickResult!
+  startDraft(input: StartDraftInput!): DraftStartResult!
+  autoPickDraftPlayer(input: AutoPickInput!): DraftPickResult! @aws_iam
+  endDraft(leagueId: String!): DraftEndResult! @aws_iam
+}
+
+type Subscription {
+  onDraftPick(leagueId: String!): DraftPickResult
+    @aws_subscribe(mutations: ["postDraftPick", "autoPickDraftPlayer"])
+  onDraftStart(leagueId: String!): DraftStartResult
+    @aws_subscribe(mutations: ["startDraft"])
+  onDraftEnd(leagueId: String!): DraftEndResult
+    @aws_subscribe(mutations: ["endDraft"])
+}
