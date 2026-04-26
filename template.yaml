@@ -153,6 +153,51 @@ Resources:
         Sourcemap: true
         External:
           - /opt/nodejs/*
+          - '@aws-sdk/*'
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # Trade Executor Function (VPC, triggered by SQS, applies roster swap after veto window)
+  # ----------------------------------------------------------
+  TradeExecutorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+      Layers:
+        - !Ref RdsCertLayer
+      CodeUri: trade-executor-function/
+      Handler: app.lambdaHandler
+      Events:
+        TradeExecutionSQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TradeExecutionQueue.Arn
+            BatchSize: 1
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
         EntryPoints:
           - app.ts
 
@@ -659,6 +704,94 @@ Resources:
             Method: get
     Metadata:
       # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        External:
+          - /opt/nodejs/*
+        EntryPoints:
+          - app.ts
+
+  # ----------------------------------------------------------
+  # Trade Functions
+  # ----------------------------------------------------------
+  TradeDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroupId
+        SubnetIds:
+          - !Ref PrivateSubnetOneId
+          - !Ref PrivateSubnetTwoId
+          - !Ref PrivateSubnetThreeId
+          - !Ref PrivateSubnetFourId
+      Environment:
+        Variables:
+          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
+          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
+          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
+          DB_PORT: 5432
+          DB_NAME: !Ref DbName
+          TRADE_EXECUTION_QUEUE_URL: !Ref TradeExecutionQueue
+          TRADE_DELAY_SECONDS: "60"
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TradeExecutionQueue.QueueName
+      Layers:
+        - !Ref RdsCertLayer
+        - !Ref SharedUtilsLayer
+      CodeUri: trade-functions/
+      Handler: app.lambdaHandler
+      Events:
+        ProposeTrade:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/propose
+            Method: post
+        GetTradesList:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/list/{teamId}
+            Method: get
+        GetLeagueTrades:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/league/{leagueId}
+            Method: get
+        AcceptTrade:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/{tradeId}/accept
+            Method: post
+        DeclineTrade:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/{tradeId}/decline
+            Method: patch
+        CancelTrade:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/{tradeId}/cancel
+            Method: patch
+        VetoTrade:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /trades/{tradeId}/veto
+            Method: post
+    Metadata:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
