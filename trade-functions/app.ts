@@ -6,7 +6,7 @@ const sqsClient = new SQSClient({});
 const TRADE_EXECUTION_QUEUE_URL = process.env.TRADE_EXECUTION_QUEUE_URL!;
 const TRADE_DELAY_SECONDS = parseInt(process.env.TRADE_DELAY_SECONDS ?? "60", 10);
 
-const SLOTS = ["bat1", "bat2", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3"];
+const SLOTS = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
 
 /* =======================================================================================
    PROPOSE A TRADE
