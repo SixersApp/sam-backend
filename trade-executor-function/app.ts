@@ -98,8 +98,7 @@ export const lambdaHandler = async (event: SQSEvent): Promise<void> => {
       const proposerSlots: Record<string, string | null> = proposerInstanceRes.rows[0];
       const recipientSlots: Record<string, string | null> = recipientInstanceRes.rows[0];
 
-      // Build slot updates by finding each player's current slot
-      // Active slots take priority over bench slots
+      // Find which slot each player currently occupies, active slots take priority over bench
       const activeSlots = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1"];
       const benchSlots = ["bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
       const slotPriority = [...activeSlots, ...benchSlots];
@@ -108,30 +107,39 @@ export const lambdaHandler = async (event: SQSEvent): Promise<void> => {
         return slotPriority.find(s => slots[s] === playerId) ?? null;
       }
 
-      const proposerUpdates: Record<string, string | null> = {};
-      const recipientUpdates: Record<string, string | null> = {};
-
-      // offeredPlayerIds move from proposer → recipient, requestedPlayerIds move from recipient → proposer
+      // Find slots for offered players (on proposer) and requested players (on recipient)
+      const offeredSlots: string[] = [];
       for (const playerId of offeredPlayerIds) {
-        const fromSlot = findSlot(proposerSlots, playerId);
-        if (!fromSlot) {
+        const slot = findSlot(proposerSlots, playerId);
+        if (!slot) {
           console.error(`Offered player ${playerId} not found in proposer's roster`);
           continue;
         }
-        // Find a free slot in recipient or use the slot vacated by a requested player
-        proposerUpdates[fromSlot] = null; // will be filled by requested players below
-        recipientUpdates[fromSlot] = playerId; // place in the same slot type on recipient side
+        offeredSlots.push(slot);
       }
 
+      const requestedSlots: string[] = [];
       for (const playerId of requestedPlayerIds) {
-        const fromSlot = findSlot(recipientSlots, playerId);
-        if (!fromSlot) {
+        const slot = findSlot(recipientSlots, playerId);
+        if (!slot) {
           console.error(`Requested player ${playerId} not found in recipient's roster`);
           continue;
         }
-        recipientUpdates[fromSlot] = null;
-        proposerUpdates[fromSlot] = playerId;
+        requestedSlots.push(slot);
       }
+
+      // Swap: offered slots on proposer receive requested players (in order), extras become null
+      // Requested slots on recipient receive offered players (in order), extras become null
+      const proposerUpdates: Record<string, string | null> = {};
+      const recipientUpdates: Record<string, string | null> = {};
+
+      offeredSlots.forEach((slot, i) => {
+        proposerUpdates[slot] = requestedPlayerIds[i] ?? null;
+      });
+
+      requestedSlots.forEach((slot, i) => {
+        recipientUpdates[slot] = offeredPlayerIds[i] ?? null;
+      });
 
       // Apply updates to proposer instance
       if (Object.keys(proposerUpdates).length > 0) {
