@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import type { SQSEvent } from "aws-lambda";
 
-const SLOTS = ["bat1", "bat2", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3"];
+const SLOTS = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
 
 let pool: Pool | null = null;
 function getPool(): Pool {
@@ -100,8 +100,8 @@ export const lambdaHandler = async (event: SQSEvent): Promise<void> => {
 
       // Build slot updates by finding each player's current slot
       // Active slots take priority over bench slots
-      const activeSlots = ["bat1", "bat2", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1"];
-      const benchSlots = ["bench1", "bench2", "bench3"];
+      const activeSlots = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1"];
+      const benchSlots = ["bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
       const slotPriority = [...activeSlots, ...benchSlots];
 
       function findSlot(slots: Record<string, string | null>, playerId: string): string | null {
