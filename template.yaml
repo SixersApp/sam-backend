@@ -574,12 +574,6 @@ Resources:
       QueueName: matchup-resolution-queue
       VisibilityTimeout: 60
 
-  TradeExecutionQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: trade-execution-queue
-      VisibilityTimeout: 60
-
   # ----------------------------------------------------------
   # Matchup Resolver Function (VPC, triggered by SQS, resolves fantasy matchup winners)
   # ----------------------------------------------------------
@@ -624,50 +618,6 @@ Resources:
         Sourcemap: true
         External:
           - /opt/nodejs/*
-        EntryPoints:
-          - app.ts
-
-  # ----------------------------------------------------------
-  # Trade Executor Function (VPC, triggered by SQS, applies roster swap after veto window)
-  # ----------------------------------------------------------
-  TradeExecutorFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
-      Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroupId
-        SubnetIds:
-          - !Ref PrivateSubnetOneId
-          - !Ref PrivateSubnetTwoId
-          - !Ref PrivateSubnetThreeId
-          - !Ref PrivateSubnetFourId
-      Environment:
-        Variables:
-          DB_HOST: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:host}}"
-          DB_USER: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:username}}"
-          DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
-          DB_PORT: 5432
-          DB_NAME: !Ref DbName
-      Layers:
-        - !Ref RdsCertLayer
-      CodeUri: trade-executor-function/
-      Handler: app.lambdaHandler
-      Events:
-        TradeExecutionSQS:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt TradeExecutionQueue.Arn
-            BatchSize: 1
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
         EntryPoints:
           - app.ts
 
@@ -1271,9 +1221,6 @@ Resources:
   # ----------------------------------------------------------
   # Trade Functions
   # ----------------------------------------------------------
-  # ----------------------------------------------------------
-  # Trade Functions
-  # ----------------------------------------------------------
   TradeDataFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1295,11 +1242,6 @@ Resources:
           DB_PASSWORD: "{{resolve:secretsmanager:sixers-app/db-creds:SecretString:password}}"
           DB_PORT: 5432
           DB_NAME: !Ref DbName
-          TRADE_EXECUTION_QUEUE_URL: !Ref TradeExecutionQueue
-          TRADE_DELAY_SECONDS: "60"
-      Policies:
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt TradeExecutionQueue.QueueName
       Layers:
         - !Ref RdsCertLayer
         - !Ref SharedUtilsLayer
@@ -1318,12 +1260,6 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /trades/list/{teamId}
             Method: get
-        GetLeagueTrades:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /trades/league/{leagueId}
-            Method: get
         AcceptTrade:
           Type: Api
           Properties:
@@ -1336,18 +1272,6 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /trades/{tradeId}/decline
             Method: patch
-        CancelTrade:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /trades/{tradeId}/cancel
-            Method: patch
-        VetoTrade:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /trades/{tradeId}/veto
-            Method: post
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
