@@ -294,6 +294,36 @@ app.post("/waivers/:leagueId/drop", async (req: Request, res: Response) => {
     const current_match_num = await getCurrentMatchNum(client, leagueId, season_id, tournament_id);
     if (current_match_num === null) return res.status(400).json({ message: "No active match week" });
 
+    // Block drop if player is currently offered in one of the user's own pending trades
+    const offeredInTradeRes = await client.query(
+      `SELECT 1
+       FROM fantasydata.trade_offered_players top
+       JOIN fantasydata.trades t ON t.id = top.trade_id
+       WHERE top.player_id = $1
+         AND t.proposer_fantasy_team_id = $2
+         AND t.status = 'pending'
+       LIMIT 1`,
+      [playerId, teamId]
+    );
+    if (offeredInTradeRes.rowCount! > 0) {
+      return res.status(400).json({ message: "This player is part of a pending trade offer. Cancel that trade first." });
+    }
+
+    // Block drop if player is being requested in an incoming pending trade
+    const requestedInTradeRes = await client.query(
+      `SELECT 1
+       FROM fantasydata.trade_requested_players trp
+       JOIN fantasydata.trades t ON t.id = trp.trade_id
+       WHERE trp.player_id = $1
+         AND t.recipient_fantasy_team_id = $2
+         AND t.status = 'pending'
+       LIMIT 1`,
+      [playerId, teamId]
+    );
+    if (requestedInTradeRes.rowCount! > 0) {
+      return res.status(400).json({ message: "This player is being requested in a pending trade. Decline that trade first." });
+    }
+
     // Player must be on current roster
     const currentRes = await client.query(
       `SELECT id, ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
