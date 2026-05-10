@@ -119,7 +119,7 @@ app.get("/waivers/:leagueId", async (req: Request, res: Response) => {
     const playersRes = await client.query(
       `SELECT
          p.id,
-         COALESCE(p.full_name, p.name, '') AS name,
+         COALESCE(p.full_name, p.player_name, '') AS name,
          COALESCE(psi.role, '') AS role,
          COALESCE(match_week.status, 'NS') AS match_status
        FROM irldata.player_season_info psi
