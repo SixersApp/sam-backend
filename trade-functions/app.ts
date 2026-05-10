@@ -221,6 +221,7 @@ app.get("/trades/list/:teamId", async (req: Request, res: Response) => {
     const result = await client.query(
       `SELECT
          t.id, t.status, t.created_at, t.responded_at,
+         t.proposer_fantasy_team_id, t.recipient_fantasy_team_id,
          p_team.team_name AS from_team,
          r_team.team_name AS to_team,
          (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
