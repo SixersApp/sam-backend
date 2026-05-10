@@ -9,6 +9,61 @@ function findSlot(slots: Record<string, string | null>, playerId: string): strin
   return SLOT_PRIORITY.find(s => slots[s] === playerId) ?? null;
 }
 
+// Same three-tier algorithm used by matchup-functions to find the current active match week
+async function getCurrentMatchNum(
+  client: any,
+  leagueId: string,
+  seasonId: string,
+  tournamentId: string
+): Promise<number | null> {
+  const res = await client.query(`
+    WITH match_statuses AS (
+      SELECT DISTINCT fm.match_num, mi.status
+      FROM fantasydata.fantasy_matchups fm
+      JOIN fantasydata.fantasy_team_instance ti1 ON ti1.id = fm.fantasy_team_instance1_id
+      JOIN fantasydata.fantasy_team_instance ti2 ON ti2.id = fm.fantasy_team_instance2_id
+      CROSS JOIN LATERAL (VALUES
+        (ti1.bat1),(ti1.bat2),(ti1.wicket1),(ti1.bowl1),(ti1.bowl2),(ti1.bowl3),(ti1.all1),(ti1.flex1),
+        (ti2.bat1),(ti2.bat2),(ti2.wicket1),(ti2.bowl1),(ti2.bowl2),(ti2.bowl3),(ti2.all1),(ti2.flex1)
+      ) AS u(player_id)
+      JOIN irldata.player_season_info psi
+        ON psi.player_id = u.player_id AND psi.season_id = $2 AND psi.tournament_id = $3
+      JOIN irldata.match_info mi
+        ON mi.tournament_id = $3 AND mi.season_id = $2
+        AND (
+          (mi.home_team_id = psi.team_id AND mi.home_match_num = fm.match_num)
+          OR  (mi.away_team_id = psi.team_id AND mi.away_match_num = fm.match_num)
+        )
+      WHERE fm.league_id = $1 AND u.player_id IS NOT NULL
+    ),
+    active_weeks AS (
+      SELECT match_num FROM match_statuses GROUP BY match_num
+      HAVING
+        COUNT(*) FILTER (WHERE status = 'LIVE') > 0
+        OR (COUNT(*) FILTER (WHERE status IN ('FINISHED','ABAN.')) > 0
+            AND COUNT(*) FILTER (WHERE status IN ('NS','LIVE')) > 0)
+    ),
+    completed_weeks AS (
+      SELECT match_num FROM match_statuses GROUP BY match_num
+      HAVING COUNT(*) FILTER (WHERE status IN ('NS','LIVE')) = 0
+    )
+    SELECT COALESCE(
+      (SELECT MIN(match_num) FROM active_weeks),
+      (
+        SELECT cw_max + 1 FROM (SELECT MAX(match_num) AS cw_max FROM completed_weeks) sub
+        WHERE NOT EXISTS (SELECT 1 FROM active_weeks)
+          AND EXISTS (
+            SELECT 1 FROM fantasydata.fantasy_matchups fm2
+            WHERE fm2.league_id = $1 AND fm2.match_num = cw_max + 1
+          )
+      )
+    ) AS current_match_num
+  `, [leagueId, seasonId, tournamentId]);
+
+  const val = res.rows[0]?.current_match_num;
+  return val != null ? Number(val) : null;
+}
+
 function buildRosterUpdates(
   currentSlots: Record<string, string | null>,
   outgoing: string[],
@@ -89,19 +144,15 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Recipient team is not in this league" });
     }
 
-    // Get league season/tournament context and current match_num
+    // Get league season/tournament context
     const leagueRes = await client.query(
-      `SELECT l.season_id, l.tournament_id,
-         (SELECT MAX(fti.match_num)
-          FROM fantasydata.fantasy_team_instance fti
-          JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
-          WHERE ft.league_id = l.id) AS current_match_num
-       FROM fantasydata.leagues l WHERE l.id = $1`,
+      `SELECT season_id, tournament_id FROM fantasydata.leagues WHERE id = $1`,
       [leagueId]
     );
     if (leagueRes.rowCount === 0) return res.status(404).json({ message: "League not found" });
 
-    const { season_id, tournament_id, current_match_num } = leagueRes.rows[0];
+    const { season_id, tournament_id } = leagueRes.rows[0];
+    const current_match_num = await getCurrentMatchNum(client, leagueId, season_id, tournament_id);
 
     if (current_match_num === null) {
       return res.status(400).json({ message: "League has no active match week" });
@@ -265,13 +316,7 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     await client.query("BEGIN");
 
     const tradeRes = await client.query(
-      `SELECT t.*,
-         ft.user_id AS recipient_user_id,
-         l.season_id, l.tournament_id,
-         (SELECT MAX(fti.match_num)
-          FROM fantasydata.fantasy_team_instance fti
-          JOIN fantasydata.fantasy_teams ftt ON ftt.id = fti.fantasy_team_id
-          WHERE ftt.league_id = t.league_id) AS current_match_num
+      `SELECT t.*, ft.user_id AS recipient_user_id, l.season_id, l.tournament_id
        FROM fantasydata.trades t
        JOIN fantasydata.fantasy_teams ft ON ft.id = t.recipient_fantasy_team_id
        JOIN fantasydata.leagues l ON l.id = t.league_id
@@ -285,11 +330,13 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     if (trade.recipient_user_id !== userId) {
       return res.status(403).json({ message: "Only the trade recipient can accept" });
     }
-    if (trade.current_match_num === null) {
+
+    const { proposer_fantasy_team_id, recipient_fantasy_team_id, league_id, season_id, tournament_id } = trade;
+    const current_match_num = await getCurrentMatchNum(client, league_id, season_id, tournament_id);
+
+    if (current_match_num === null) {
       return res.status(400).json({ message: "League has no active match week" });
     }
-
-    const { proposer_fantasy_team_id, recipient_fantasy_team_id, current_match_num } = trade;
 
     const offeredRes = await client.query(
       `SELECT player_id FROM fantasydata.trade_offered_players WHERE trade_id = $1`,
@@ -302,59 +349,65 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     const offeredPlayerIds: string[] = offeredRes.rows.map((r: any) => r.player_id);
     const requestedPlayerIds: string[] = requestedRes.rows.map((r: any) => r.player_id);
 
-    const proposerInstanceRes = await client.query(
-      `SELECT ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
+    // Validate against current instance first
+    const proposerCurrentRes = await client.query(
+      `SELECT id, ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
        WHERE fantasy_team_id = $1 AND match_num = $2`,
       [proposer_fantasy_team_id, current_match_num]
     );
-    const recipientInstanceRes = await client.query(
-      `SELECT ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
+    const recipientCurrentRes = await client.query(
+      `SELECT id, ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
        WHERE fantasy_team_id = $1 AND match_num = $2`,
       [recipient_fantasy_team_id, current_match_num]
     );
-
-    if (proposerInstanceRes.rowCount === 0 || recipientInstanceRes.rowCount === 0) {
+    if (proposerCurrentRes.rowCount === 0 || recipientCurrentRes.rowCount === 0) {
       await client.query("ROLLBACK");
       return res.status(400).json({ message: "Team roster not found for current match week" });
     }
 
-    const proposerSlots: Record<string, string | null> = proposerInstanceRes.rows[0];
-    const recipientSlots: Record<string, string | null> = recipientInstanceRes.rows[0];
-
-    let proposerUpdates: Record<string, string | null>;
-    let recipientUpdates: Record<string, string | null>;
     try {
-      proposerUpdates = buildRosterUpdates(proposerSlots, offeredPlayerIds, requestedPlayerIds);
-      recipientUpdates = buildRosterUpdates(recipientSlots, requestedPlayerIds, offeredPlayerIds);
+      buildRosterUpdates(proposerCurrentRes.rows[0], offeredPlayerIds, requestedPlayerIds);
+      buildRosterUpdates(recipientCurrentRes.rows[0], requestedPlayerIds, offeredPlayerIds);
     } catch (err: any) {
       await client.query("ROLLBACK");
       return res.status(400).json({ message: err.message });
     }
 
-    // Null out captain/vice_captain if the departing player held those roles
-    for (const pid of offeredPlayerIds) {
-      if (proposerSlots.captain === pid) proposerUpdates.captain = null;
-      if (proposerSlots.vice_captain === pid) proposerUpdates.vice_captain = null;
-    }
-    for (const pid of requestedPlayerIds) {
-      if (recipientSlots.captain === pid) recipientUpdates.captain = null;
-      if (recipientSlots.vice_captain === pid) recipientUpdates.vice_captain = null;
-    }
+    // Fetch all future instances (current week and beyond) and apply the swap to each
+    const proposerFutureRes = await client.query(
+      `SELECT id, ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
+       WHERE fantasy_team_id = $1 AND match_num >= $2 ORDER BY match_num`,
+      [proposer_fantasy_team_id, current_match_num]
+    );
+    const recipientFutureRes = await client.query(
+      `SELECT id, ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
+       WHERE fantasy_team_id = $1 AND match_num >= $2 ORDER BY match_num`,
+      [recipient_fantasy_team_id, current_match_num]
+    );
 
-    if (Object.keys(proposerUpdates).length > 0) {
-      const setClauses = Object.keys(proposerUpdates).map((col, i) => `${col} = $${i + 3}`);
-      await client.query(
-        `UPDATE fantasydata.fantasy_team_instance SET ${setClauses.join(", ")} WHERE fantasy_team_id = $1 AND match_num = $2`,
-        [proposer_fantasy_team_id, current_match_num, ...Object.values(proposerUpdates)]
-      );
-    }
-    if (Object.keys(recipientUpdates).length > 0) {
-      const setClauses = Object.keys(recipientUpdates).map((col, i) => `${col} = $${i + 3}`);
-      await client.query(
-        `UPDATE fantasydata.fantasy_team_instance SET ${setClauses.join(", ")} WHERE fantasy_team_id = $1 AND match_num = $2`,
-        [recipient_fantasy_team_id, current_match_num, ...Object.values(recipientUpdates)]
-      );
-    }
+    const applyToInstances = async (instances: any[], outgoing: string[], incoming: string[]) => {
+      for (const instance of instances) {
+        let updates: Record<string, string | null>;
+        try {
+          updates = buildRosterUpdates(instance, outgoing, incoming);
+        } catch {
+          continue; // player already gone from this future instance (e.g. a prior trade)
+        }
+        for (const pid of outgoing) {
+          if (instance.captain === pid) updates.captain = null;
+          if (instance.vice_captain === pid) updates.vice_captain = null;
+        }
+        if (Object.keys(updates).length === 0) continue;
+        const setClauses = Object.keys(updates).map((col, i) => `${col} = $${i + 2}`);
+        await client.query(
+          `UPDATE fantasydata.fantasy_team_instance SET ${setClauses.join(", ")} WHERE id = $1`,
+          [instance.id, ...Object.values(updates)]
+        );
+      }
+    };
+
+    await applyToInstances(proposerFutureRes.rows, offeredPlayerIds, requestedPlayerIds);
+    await applyToInstances(recipientFutureRes.rows, requestedPlayerIds, offeredPlayerIds);
 
     await client.query(
       `UPDATE fantasydata.trades SET status = 'completed', responded_at = NOW() WHERE id = $1`,
