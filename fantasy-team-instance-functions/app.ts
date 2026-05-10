@@ -312,6 +312,80 @@ app.get("/fantasy-team-instance/:id/all", async (req: Request, res: Response) =>
 });
 
 /* =======================================================================================
+   GET /fantasy-team-instance/:id/roster
+   Returns the latest instance with player data for any team (no ownership check).
+   Used by the trade propose flow to view opponent rosters.
+   ======================================================================================= */
+app.get("/fantasy-team-instance/:id/roster", async (req: Request, res: Response) => {
+  const { id: teamId } = req.params;
+  const userId = req.lambdaEvent.requestContext.authorizer?.claims?.["sub"];
+
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+  if (!teamId) return res.status(400).json({ message: "Missing teamId" });
+
+  let client;
+  try {
+    const pool = getPool();
+    client = await pool.connect();
+
+    const result = await client.query(
+      `SELECT fti.*, l.tournament_id, l.season_id
+       FROM fantasydata.fantasy_team_instance fti
+       JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
+       JOIN fantasydata.leagues l ON l.id = ft.league_id
+       WHERE fti.fantasy_team_id = $1
+       ORDER BY fti.match_num DESC
+       LIMIT 1`,
+      [teamId]
+    );
+
+    if (result.rowCount === 0) return res.status(404).json({ message: "No roster found" });
+
+    const instance = result.rows[0];
+    const { tournament_id, season_id } = instance;
+
+    const slots = ['bat1','bat2','wicket1','bowl1','bowl2','bowl3','all1','flex1','bench1','bench2','bench3','bench4','bench5','bench6'];
+    const playerIds = slots.map((s: string) => instance[s]).filter(Boolean);
+
+    let playersMap: Record<string, any> = {};
+    if (playerIds.length > 0) {
+      const playersResult = await client.query(
+        `SELECT p.id, p.player_name, p.full_name, p.image, psi.role,
+                p.country_id, c.name AS country_name, c.image AS country_image
+         FROM irldata.player p
+         LEFT JOIN irldata.country_info c ON c.id = p.country_id
+         LEFT JOIN irldata.player_season_info psi
+           ON psi.player_id = p.id AND psi.tournament_id = $2 AND psi.season_id = $3
+         WHERE p.id = ANY($1)`,
+        [playerIds, tournament_id, season_id]
+      );
+      playersResult.rows.forEach((p: any) => { playersMap[p.id] = p; });
+    }
+
+    const players: Record<string, any> = {};
+    slots.forEach((slot: string) => {
+      const pid = instance[slot];
+      players[slot] = pid && playersMap[pid] ? playersMap[pid] : null;
+    });
+
+    return res.status(200).json({
+      id: instance.id,
+      fantasy_team_id: instance.fantasy_team_id,
+      match_num: instance.match_num,
+      captain: instance.captain,
+      vice_captain: instance.vice_captain,
+      is_locked: instance.is_locked,
+      players,
+    });
+  } catch (err) {
+    console.error("GET /fantasy-team-instance/:id/roster failed:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client?.release();
+  }
+});
+
+/* =======================================================================================
    GET FANTASY TEAM INSTANCE PERFORMANCES
    GET /fantasy-team-instance/:id/performances
    ======================================================================================= */
