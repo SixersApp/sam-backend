@@ -3,10 +3,9 @@ import { getPool, createApp, createHandler, Request, Response } from "/opt/nodej
 const app = createApp();
 
 const SLOTS = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
-const SLOT_PRIORITY = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
 
 function findSlot(slots: Record<string, string | null>, playerId: string): string | null {
-  return SLOT_PRIORITY.find(s => slots[s] === playerId) ?? null;
+  return SLOTS.find(s => slots[s] === playerId) ?? null;
 }
 
 // Same three-tier algorithm used by matchup-functions to find the current active match week
