@@ -9,6 +9,41 @@ function findSlot(slots: Record<string, string | null>, playerId: string): strin
   return SLOT_PRIORITY.find(s => slots[s] === playerId) ?? null;
 }
 
+function buildRosterUpdates(
+  currentSlots: Record<string, string | null>,
+  outgoing: string[],
+  incoming: string[]
+): Record<string, string | null> {
+  const updates: Record<string, string | null> = {};
+
+  const freedSlots: string[] = [];
+  for (const pid of outgoing) {
+    const slot = findSlot(currentSlots, pid);
+    if (!slot) throw new Error(`Player ${pid} not found in roster`);
+    updates[slot] = null;
+    freedSlots.push(slot);
+  }
+
+  // Available slots: freed slots first, then any currently empty slots
+  const availableSlots = [...freedSlots];
+  for (const slot of SLOTS) {
+    if (availableSlots.length >= incoming.length) break;
+    if (!availableSlots.includes(slot) && !currentSlots[slot]) {
+      availableSlots.push(slot);
+    }
+  }
+
+  if (availableSlots.length < incoming.length) {
+    throw new Error("Not enough roster space for incoming players");
+  }
+
+  for (let i = 0; i < incoming.length; i++) {
+    updates[availableSlots[i]] = incoming[i];
+  }
+
+  return updates;
+}
+
 /* =======================================================================================
    PROPOSE A TRADE
    POST /trades/propose
@@ -27,6 +62,9 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
   if (!Array.isArray(requestedPlayerIds) || requestedPlayerIds.length === 0) {
     return res.status(400).json({ message: "Must request at least one player" });
   }
+  if (proposerTeamId === recipientTeamId) {
+    return res.status(400).json({ message: "Cannot trade with your own team" });
+  }
 
   let client;
   try {
@@ -40,6 +78,15 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
     );
     if (ownerCheck.rowCount === 0) {
       return res.status(403).json({ message: "You do not own this team" });
+    }
+
+    // Verify recipient team is in the same league
+    const recipientCheck = await client.query(
+      `SELECT id FROM fantasydata.fantasy_teams WHERE id = $1 AND league_id = $2`,
+      [recipientTeamId, leagueId]
+    );
+    if (recipientCheck.rowCount === 0) {
+      return res.status(400).json({ message: "Recipient team is not in this league" });
     }
 
     // Get league season/tournament context and current match_num
@@ -58,6 +105,43 @@ app.post("/trades/propose", async (req: Request, res: Response) => {
 
     if (current_match_num === null) {
       return res.status(400).json({ message: "League has no active match week" });
+    }
+
+    // Validate offered players are on proposer's roster and requested players are on recipient's roster
+    const proposerRosterRes = await client.query(
+      `SELECT ${SLOTS.join(", ")} FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $1 AND match_num = $2`,
+      [proposerTeamId, current_match_num]
+    );
+    const recipientRosterRes = await client.query(
+      `SELECT ${SLOTS.join(", ")} FROM fantasydata.fantasy_team_instance WHERE fantasy_team_id = $1 AND match_num = $2`,
+      [recipientTeamId, current_match_num]
+    );
+    if (proposerRosterRes.rowCount === 0 || recipientRosterRes.rowCount === 0) {
+      return res.status(400).json({ message: "Roster not found for current match week" });
+    }
+    const proposerRosterSlots: Record<string, string | null> = proposerRosterRes.rows[0];
+    const recipientRosterSlots: Record<string, string | null> = recipientRosterRes.rows[0];
+    for (const pid of offeredPlayerIds) {
+      if (!findSlot(proposerRosterSlots, pid)) {
+        return res.status(400).json({ message: `Offered player ${pid} is not on your roster` });
+      }
+    }
+    for (const pid of requestedPlayerIds) {
+      if (!findSlot(recipientRosterSlots, pid)) {
+        return res.status(400).json({ message: `Requested player ${pid} is not on recipient's roster` });
+      }
+    }
+
+    // Check roster space: net incoming players must fit into available empty slots
+    const proposerEmptySlots = SLOTS.filter(s => !proposerRosterSlots[s]).length;
+    const recipientEmptySlots = SLOTS.filter(s => !recipientRosterSlots[s]).length;
+    const proposerNetIncoming = requestedPlayerIds.length - offeredPlayerIds.length;
+    const recipientNetIncoming = offeredPlayerIds.length - requestedPlayerIds.length;
+    if (proposerNetIncoming > proposerEmptySlots) {
+      return res.status(400).json({ message: "You do not have enough roster space for the incoming players" });
+    }
+    if (recipientNetIncoming > recipientEmptySlots) {
+      return res.status(400).json({ message: "Recipient does not have enough roster space for the incoming players" });
     }
 
     // Check player eligibility — block if their real match this week is IN_PROGRESS or FINISHED
@@ -218,12 +302,12 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     const requestedPlayerIds: string[] = requestedRes.rows.map((r: any) => r.player_id);
 
     const proposerInstanceRes = await client.query(
-      `SELECT ${SLOTS.join(", ")} FROM fantasydata.fantasy_team_instance
+      `SELECT ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
        WHERE fantasy_team_id = $1 AND match_num = $2`,
       [proposer_fantasy_team_id, current_match_num]
     );
     const recipientInstanceRes = await client.query(
-      `SELECT ${SLOTS.join(", ")} FROM fantasydata.fantasy_team_instance
+      `SELECT ${SLOTS.join(", ")}, captain, vice_captain FROM fantasydata.fantasy_team_instance
        WHERE fantasy_team_id = $1 AND match_num = $2`,
       [recipient_fantasy_team_id, current_match_num]
     );
@@ -236,16 +320,24 @@ app.post("/trades/:tradeId/accept", async (req: Request, res: Response) => {
     const proposerSlots: Record<string, string | null> = proposerInstanceRes.rows[0];
     const recipientSlots: Record<string, string | null> = recipientInstanceRes.rows[0];
 
-    const proposerUpdates: Record<string, string | null> = {};
-    const recipientUpdates: Record<string, string | null> = {};
-
-    for (let i = 0; i < offeredPlayerIds.length; i++) {
-      const slot = findSlot(proposerSlots, offeredPlayerIds[i]);
-      if (slot) proposerUpdates[slot] = requestedPlayerIds[i] ?? null;
+    let proposerUpdates: Record<string, string | null>;
+    let recipientUpdates: Record<string, string | null>;
+    try {
+      proposerUpdates = buildRosterUpdates(proposerSlots, offeredPlayerIds, requestedPlayerIds);
+      recipientUpdates = buildRosterUpdates(recipientSlots, requestedPlayerIds, offeredPlayerIds);
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: err.message });
     }
-    for (let i = 0; i < requestedPlayerIds.length; i++) {
-      const slot = findSlot(recipientSlots, requestedPlayerIds[i]);
-      if (slot) recipientUpdates[slot] = offeredPlayerIds[i] ?? null;
+
+    // Null out captain/vice_captain if the departing player held those roles
+    for (const pid of offeredPlayerIds) {
+      if (proposerSlots.captain === pid) proposerUpdates.captain = null;
+      if (proposerSlots.vice_captain === pid) proposerUpdates.vice_captain = null;
+    }
+    for (const pid of requestedPlayerIds) {
+      if (recipientSlots.captain === pid) recipientUpdates.captain = null;
+      if (recipientSlots.vice_captain === pid) recipientUpdates.vice_captain = null;
     }
 
     if (Object.keys(proposerUpdates).length > 0) {
