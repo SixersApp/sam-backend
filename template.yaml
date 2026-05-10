@@ -1025,6 +1025,12 @@ Resources:
             RestApiId: !Ref MyApi
             Path: /fantasy-team-instance/{id}/all
             Method: get
+        GetTeamRoster:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /fantasy-team-instance/{id}/roster
+            Method: get
         SwapSlots:
           Type: Api
           Properties:
