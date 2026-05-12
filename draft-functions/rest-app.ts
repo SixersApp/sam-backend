@@ -148,8 +148,7 @@ app.get("/draft/players/available", async (req: Request, res: Response) => {
               (fti.bat1), (fti.bat2), (fti.wicket1),
               (fti.bowl1), (fti.bowl2), (fti.bowl3),
               (fti.all1), (fti.flex1),
-              (fti.bench1), (fti.bench2), (fti.bench3),
-              (fti.bench4), (fti.bench5), (fti.bench6)
+              (fti.bench1), (fti.bench2), (fti.bench3)
           ) AS u(player_id)
           WHERE ft.league_id = $1
             AND u.player_id IS NOT NULL
