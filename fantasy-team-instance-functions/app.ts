@@ -236,7 +236,7 @@ app.get("/fantasy-team-instance/:id/all", async (req: Request, res: Response) =>
       'bowl1', 'bowl2', 'bowl3',
       'all1',
       'flex1',
-      'bench1', 'bench2', 'bench3', 'bench4', 'bench5', 'bench6'
+      'bench1', 'bench2', 'bench3'
     ];
 
     const allPlayerIds = new Set<string>();
@@ -344,7 +344,7 @@ app.get("/fantasy-team-instance/:id/roster", async (req: Request, res: Response)
     const instance = result.rows[0];
     const { tournament_id, season_id } = instance;
 
-    const slots = ['bat1','bat2','wicket1','bowl1','bowl2','bowl3','all1','flex1','bench1','bench2','bench3','bench4','bench5','bench6'];
+    const slots = ['bat1','bat2','wicket1','bowl1','bowl2','bowl3','all1','flex1','bench1','bench2','bench3'];
     const playerIds = slots.map((s: string) => instance[s]).filter(Boolean);
 
     let playersMap: Record<string, any> = {};
@@ -418,7 +418,7 @@ app.get("/fantasy-team-instance/:id/performances", async (req: Request, res: Res
                   wicket1,
                   bowl1, bowl2, bowl3,
                   all1, flex1,
-                  bench1, bench2, bench3, bench4, bench5, bench6
+                  bench1, bench2, bench3
               ] AS player_ids
           FROM fantasydata.fantasy_team_instance fti
           WHERE fti.id = $1

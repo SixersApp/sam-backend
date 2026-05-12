@@ -2,7 +2,7 @@ import { getPool, createApp, createHandler, Request, Response } from "/opt/nodej
 
 const app = createApp();
 
-const SLOTS = ["bat1", "bat2", "bat3", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3", "bench4", "bench5", "bench6"];
+const SLOTS = ["bat1", "bat2", "wicket1", "bowl1", "bowl2", "bowl3", "all1", "flex1", "bench1", "bench2", "bench3"];
 
 function findSlot(slots: Record<string, string | null>, playerId: string): string | null {
   return SLOTS.find(s => slots[s] === playerId) ?? null;
@@ -72,10 +72,10 @@ const takenSubquery = `
   FROM fantasydata.fantasy_team_instance fti
   JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
   CROSS JOIN LATERAL (VALUES
-    (fti.bat1),(fti.bat2),(fti.bat3),(fti.wicket1),
+    (fti.bat1),(fti.bat2),(fti.wicket1),
     (fti.bowl1),(fti.bowl2),(fti.bowl3),
     (fti.all1),(fti.flex1),
-    (fti.bench1),(fti.bench2),(fti.bench3),(fti.bench4),(fti.bench5),(fti.bench6)
+    (fti.bench1),(fti.bench2),(fti.bench3)
   ) AS u(player_id)
   WHERE ft.league_id = $1 AND fti.match_num = $2 AND u.player_id IS NOT NULL
 `;
@@ -197,10 +197,10 @@ app.post("/waivers/:leagueId/add", async (req: Request, res: Response) => {
       `SELECT 1 FROM fantasydata.fantasy_team_instance fti
        JOIN fantasydata.fantasy_teams ft ON ft.id = fti.fantasy_team_id
        CROSS JOIN LATERAL (VALUES
-         (fti.bat1),(fti.bat2),(fti.bat3),(fti.wicket1),
+         (fti.bat1),(fti.bat2),(fti.wicket1),
          (fti.bowl1),(fti.bowl2),(fti.bowl3),
          (fti.all1),(fti.flex1),
-         (fti.bench1),(fti.bench2),(fti.bench3),(fti.bench4),(fti.bench5),(fti.bench6)
+         (fti.bench1),(fti.bench2),(fti.bench3)
        ) AS u(player_id)
        WHERE ft.league_id = $1 AND fti.match_num = $2 AND u.player_id = $3 LIMIT 1`,
       [leagueId, current_match_num, playerId]
