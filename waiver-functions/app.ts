@@ -82,13 +82,15 @@ const takenSubquery = `
 
 /* =======================================================================================
    LIST AVAILABLE WAIVER PLAYERS
-   GET /waivers/:leagueId?page=1&limit=5
+   GET /waivers/:leagueId?page=1&limit=10&search=&role=
    ======================================================================================= */
 app.get("/waivers/:leagueId", async (req: Request, res: Response) => {
   const { leagueId } = req.params;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 5));
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
   const offset = (page - 1) * limit;
+  const search = (req.query.search as string || '').trim();
+  const role = (req.query.role as string || '').trim();
 
   let client;
   try {
@@ -110,8 +112,10 @@ app.get("/waivers/:leagueId", async (req: Request, res: Response) => {
        FROM irldata.player_season_info psi
        JOIN irldata.player p ON p.id = psi.player_id
        WHERE psi.season_id = $3 AND psi.tournament_id = $4
-         AND p.id NOT IN (${takenSubquery})`,
-      [leagueId, current_match_num, season_id, tournament_id]
+         AND p.id NOT IN (${takenSubquery})
+         AND ($5 = '' OR LOWER(COALESCE(p.full_name, p.player_name, '')) LIKE '%' || LOWER($5) || '%')
+         AND ($6 = '' OR LOWER(COALESCE(psi.role, '')) LIKE '%' || LOWER($6) || '%')`,
+      [leagueId, current_match_num, season_id, tournament_id, search, role]
     );
     const total = parseInt(countRes.rows[0].total, 10);
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -121,6 +125,8 @@ app.get("/waivers/:leagueId", async (req: Request, res: Response) => {
          p.id,
          COALESCE(p.full_name, p.player_name, '') AS name,
          COALESCE(psi.role, '') AS role,
+         COALESCE(p.image, '') AS image,
+         COALESCE(psi.initial_projection, 0) AS ppg,
          COALESCE(match_week.status, 'NS') AS match_status
        FROM irldata.player_season_info psi
        JOIN irldata.player p ON p.id = psi.player_id
@@ -137,11 +143,13 @@ app.get("/waivers/:leagueId", async (req: Request, res: Response) => {
        ) match_week ON true
        WHERE psi.season_id = $3 AND psi.tournament_id = $4
          AND p.id NOT IN (${takenSubquery})
+         AND ($5 = '' OR LOWER(COALESCE(p.full_name, p.player_name, '')) LIKE '%' || LOWER($5) || '%')
+         AND ($6 = '' OR LOWER(COALESCE(psi.role, '')) LIKE '%' || LOWER($6) || '%')
        ORDER BY
-         CASE WHEN COALESCE(match_week.status, 'NS') NOT IN ('IN_PROGRESS', 'FINISHED') THEN 0 ELSE 1 END,
+         COALESCE(psi.initial_projection, 0) DESC,
          p.full_name
-       LIMIT $5 OFFSET $6`,
-      [leagueId, current_match_num, season_id, tournament_id, limit, offset]
+       LIMIT $7 OFFSET $8`,
+      [leagueId, current_match_num, season_id, tournament_id, search, role, limit, offset]
     );
 
     return res.status(200).json({
