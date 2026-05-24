@@ -126,7 +126,7 @@ app.get("/waivers/:leagueId", async (req: Request, res: Response) => {
          COALESCE(p.full_name, p.player_name, '') AS name,
          COALESCE(psi.role, '') AS role,
          COALESCE(p.image, '') AS image,
-         COALESCE(psi.initial_projection, 0) AS ppg,
+         COALESCE(psi.initial_projection::numeric, 0)::float AS ppg,
          COALESCE(match_week.status, 'NS') AS match_status
        FROM irldata.player_season_info psi
        JOIN irldata.player p ON p.id = psi.player_id
