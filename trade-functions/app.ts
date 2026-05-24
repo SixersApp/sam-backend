@@ -274,11 +274,11 @@ app.get("/trades/list/:teamId", async (req: Request, res: Response) => {
          t.proposer_fantasy_team_id, t.recipient_fantasy_team_id,
          p_team.team_name AS from_team,
          r_team.team_name AS to_team,
-         (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
+         (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name, 'image', p.image))
           FROM fantasydata.trade_offered_players top
           JOIN irldata.player p ON top.player_id = p.id
           WHERE top.trade_id = t.id) AS offered_players,
-         (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name))
+         (SELECT json_agg(json_build_object('id', p.id, 'name', p.full_name, 'image', p.image))
           FROM fantasydata.trade_requested_players trp
           JOIN irldata.player p ON trp.player_id = p.id
           WHERE trp.trade_id = t.id) AS requested_players
