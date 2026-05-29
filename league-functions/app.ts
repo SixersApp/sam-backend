@@ -389,156 +389,62 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
             WHERE l.id = $2
         ),
 
-        completed_matchups AS (
+        -- Distinct IRL teams represented in either roster of each matchup
+        matchup_irl_teams AS (
+            SELECT DISTINCT
+                fm.id AS matchup_id, fm.match_num,
+                tl.season_id, tl.tournament_id,
+                psi.team_id
+            FROM fantasydata.fantasy_matchups fm
+            CROSS JOIN target_league tl
+            JOIN fantasydata.fantasy_team_instance ti
+                ON ti.id IN (fm.fantasy_team_instance1_id, fm.fantasy_team_instance2_id)
+            CROSS JOIN LATERAL (VALUES
+                (ti.bat1),(ti.bat2),(ti.wicket1),
+                (ti.bowl1),(ti.bowl2),(ti.bowl3),
+                (ti.all1),(ti.flex1)
+            ) AS u(player_id)
+            JOIN irldata.player_season_info psi
+                ON psi.player_id = u.player_id
+               AND psi.season_id = tl.season_id
+               AND psi.tournament_id = tl.tournament_id
+            WHERE fm.league_id = tl.id
+              AND u.player_id IS NOT NULL
+        ),
+
+        -- Matchups where every roster IRL match at match_num is terminal
+        completed_matchup_ids AS (
+            SELECT mt.matchup_id
+            FROM matchup_irl_teams mt
+            JOIN irldata.match_info mi
+                ON mi.season_id = mt.season_id
+               AND mi.tournament_id = mt.tournament_id
+               AND (
+                    (mi.home_team_id = mt.team_id AND mi.home_match_num = mt.match_num)
+                    OR (mi.away_team_id = mt.team_id AND mi.away_match_num = mt.match_num)
+               )
+            GROUP BY mt.matchup_id
+            HAVING COUNT(*) > 0
+               AND COUNT(*) FILTER (WHERE mi.status NOT IN ('FINISHED', 'ABAN.')) = 0
+        ),
+
+        computed_scores AS (
+            SELECT * FROM fantasydata.compute_matchup_scores(
+                ARRAY(SELECT matchup_id FROM completed_matchup_ids)
+            )
+        ),
+
+        completed_with_scores AS (
             SELECT
                 fm.id AS matchup_id,
                 fm.match_num,
                 fm.fantasy_team_instance1_id,
                 fm.fantasy_team_instance2_id,
                 fm.fantasy_winner_team_instance_id,
-                tl.season_id,
-                tl.tournament_id
+                cs.team1_score,
+                cs.team2_score
             FROM fantasydata.fantasy_matchups fm
-            CROSS JOIN target_league tl
-            WHERE fm.league_id = tl.id
-              AND fm.fantasy_winner_team_instance_id IS NOT NULL
-        ),
-
-        league_rules AS (
-            SELECT lsr.*
-            FROM fantasydata.league_scoring_rules lsr
-            WHERE lsr.league_id = $2
-        ),
-
-        team_rosters AS (
-            SELECT
-                cm.matchup_id, cm.match_num, cm.season_id, cm.tournament_id,
-                side.team_side, side.instance_id,
-                ti.captain, ti.vice_captain,
-                u.player_id
-            FROM completed_matchups cm
-            CROSS JOIN LATERAL (VALUES
-                (1, cm.fantasy_team_instance1_id),
-                (2, cm.fantasy_team_instance2_id)
-            ) AS side(team_side, instance_id)
-            JOIN fantasydata.fantasy_team_instance ti ON ti.id = side.instance_id
-            CROSS JOIN LATERAL (VALUES
-                (ti.bat1),(ti.bat2),(ti.wicket1),
-                (ti.bowl1),(ti.bowl2),(ti.bowl3),
-                (ti.all1),(ti.flex1)
-            ) AS u(player_id)
-            WHERE u.player_id IS NOT NULL
-        ),
-
-        resolved_performances AS (
-            SELECT
-                tr.matchup_id, tr.team_side, tr.instance_id,
-                tr.player_id, tr.captain, tr.vice_captain,
-                pp.runs_scored, pp.balls_faced, pp.fours, pp.sixes,
-                pp.balls_bowled, pp.runs_conceded, pp.wickets_taken,
-                pp.catches, pp.run_outs, pp.catches_dropped, pp.not_out
-            FROM team_rosters tr
-            JOIN irldata.player_season_info psi
-                ON psi.player_id = tr.player_id
-               AND psi.season_id = tr.season_id
-               AND psi.tournament_id = tr.tournament_id
-            JOIN irldata.match_info mi
-                ON mi.season_id = tr.season_id
-               AND mi.tournament_id = tr.tournament_id
-               AND (
-                    (mi.home_team_id = psi.team_id AND mi.home_match_num = tr.match_num)
-                    OR (mi.away_team_id = psi.team_id AND mi.away_match_num = tr.match_num)
-               )
-            JOIN irldata.player_performance pp
-                ON pp.match_id = mi.id
-               AND pp.player_season_id = psi.id
-        ),
-
-        player_stats_calc AS (
-            SELECT rp.*,
-                CASE WHEN COALESCE(rp.balls_faced, 0) > 0
-                     THEN (rp.runs_scored * 100.0 / rp.balls_faced)::NUMERIC ELSE 0 END AS strike_rate,
-                CASE WHEN COALESCE(rp.balls_bowled, 0) > 0
-                     THEN (rp.runs_conceded / (rp.balls_bowled / 6.0))::NUMERIC ELSE 0 END AS economy
-            FROM resolved_performances rp
-        ),
-
-        standard_points AS (
-            SELECT ps.matchup_id, ps.instance_id, ps.player_id,
-                SUM(CASE
-                    WHEN r.stat = 'Points per run' THEN COALESCE(ps.runs_scored, 0) * r.per_unit_points
-                    WHEN r.stat = 'Bonus per 4' THEN COALESCE(ps.fours, 0) * r.per_unit_points
-                    WHEN r.stat = 'Bonus per 6' THEN COALESCE(ps.sixes, 0) * r.per_unit_points
-                    WHEN r.stat = 'Bonus per half-century' AND COALESCE(ps.runs_scored, 0) >= 50 THEN r.flat_points
-                    WHEN r.stat = 'Bonus per century' AND COALESCE(ps.runs_scored, 0) >= 100 THEN r.flat_points
-                    WHEN r.stat = 'Duck-out Penalty' AND COALESCE(ps.runs_scored, 0) = 0
-                         AND COALESCE(ps.balls_faced, 0) > 0 THEN r.flat_points
-                    WHEN r.stat = 'Points per Wicket' THEN COALESCE(ps.wickets_taken, 0) * r.per_unit_points
-                    WHEN r.stat = '3-Wicket Bonus' THEN FLOOR(COALESCE(ps.wickets_taken, 0) / 3.0) * r.per_unit_points
-                    WHEN r.stat = '5-Wicket Bonus' THEN FLOOR(COALESCE(ps.wickets_taken, 0) / 5.0) * r.per_unit_points
-                    WHEN r.stat = 'Points per catch' THEN COALESCE(ps.catches, 0) * r.per_unit_points
-                    WHEN r.stat = '3-Catches bonus' THEN FLOOR(COALESCE(ps.catches, 0) / 3.0) * r.per_unit_points
-                    WHEN r.stat = 'Run Out' THEN COALESCE(ps.run_outs, 0) * r.per_unit_points
-                    WHEN r.stat = 'Dropped Catch' THEN COALESCE(ps.catches_dropped, 0) * r.per_unit_points
-                    ELSE 0
-                END) AS total_std_points
-            FROM player_stats_calc ps
-            CROSS JOIN league_rules r
-            WHERE r.mode != 'band' AND r.category != 'leadership'
-            GROUP BY ps.matchup_id, ps.instance_id, ps.player_id
-        ),
-
-        band_points AS (
-            SELECT ps.matchup_id, ps.instance_id, ps.player_id,
-                SUM(r.flat_points) AS total_band_points
-            FROM player_stats_calc ps
-            JOIN league_rules r ON r.mode = 'band'
-            WHERE
-                (r.stat = 'Strike Rate' AND COALESCE(ps.balls_faced, 0) > 0 AND r.band @> ps.strike_rate)
-                OR
-                (r.stat = 'Economy' AND COALESCE(ps.balls_bowled, 0) > 0 AND r.band @> ps.economy)
-            GROUP BY ps.matchup_id, ps.instance_id, ps.player_id
-        ),
-
-        individual_scores AS (
-            SELECT
-                ps.matchup_id, ps.team_side, ps.instance_id, ps.player_id,
-                (COALESCE(sp.total_std_points, 0) + COALESCE(bp.total_band_points, 0))
-                * COALESCE((
-                    SELECT multiplier FROM league_rules
-                    WHERE stat = 'Captaincy Multiplier'
-                      AND ps.player_id = ps.captain
-                ), 1)
-                * COALESCE((
-                    SELECT multiplier FROM league_rules
-                    WHERE stat = 'Vice Captaincy Multiplier'
-                      AND ps.player_id = ps.vice_captain
-                ), 1) AS final_player_score
-            FROM player_stats_calc ps
-            LEFT JOIN standard_points sp
-                ON sp.matchup_id = ps.matchup_id
-               AND sp.instance_id = ps.instance_id
-               AND sp.player_id = ps.player_id
-            LEFT JOIN band_points bp
-                ON bp.matchup_id = ps.matchup_id
-               AND bp.instance_id = ps.instance_id
-               AND bp.player_id = ps.player_id
-        ),
-
-        matchup_scores AS (
-            SELECT
-                cm.matchup_id,
-                cm.match_num,
-                cm.fantasy_team_instance1_id,
-                cm.fantasy_team_instance2_id,
-                cm.fantasy_winner_team_instance_id,
-                COALESCE(SUM(CASE WHEN ind.team_side = 1 THEN ind.final_player_score ELSE 0 END), 0) AS team1_score,
-                COALESCE(SUM(CASE WHEN ind.team_side = 2 THEN ind.final_player_score ELSE 0 END), 0) AS team2_score
-            FROM completed_matchups cm
-            LEFT JOIN individual_scores ind ON ind.matchup_id = cm.matchup_id
-            GROUP BY cm.matchup_id, cm.match_num,
-                     cm.fantasy_team_instance1_id, cm.fantasy_team_instance2_id,
-                     cm.fantasy_winner_team_instance_id
+            JOIN computed_scores cs ON cs.matchup_id = fm.id
         ),
 
         instance_matchup_scores AS (
@@ -546,15 +452,23 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
                 matchup_id, match_num,
                 fantasy_team_instance1_id AS instance_id,
                 team1_score AS score,
-                (fantasy_winner_team_instance_id = fantasy_team_instance1_id) AS won
-            FROM matchup_scores
+                CASE
+                    WHEN fantasy_winner_team_instance_id IS NOT NULL
+                        THEN (fantasy_winner_team_instance_id = fantasy_team_instance1_id)
+                    ELSE team1_score >= team2_score
+                END AS won
+            FROM completed_with_scores
             UNION ALL
             SELECT
                 matchup_id, match_num,
                 fantasy_team_instance2_id AS instance_id,
                 team2_score AS score,
-                (fantasy_winner_team_instance_id = fantasy_team_instance2_id) AS won
-            FROM matchup_scores
+                CASE
+                    WHEN fantasy_winner_team_instance_id IS NOT NULL
+                        THEN (fantasy_winner_team_instance_id = fantasy_team_instance2_id)
+                    ELSE team2_score > team1_score
+                END AS won
+            FROM completed_with_scores
         ),
 
         team_stats AS (
@@ -582,7 +496,18 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
             l.max_teams,
             l.join_code,
             l.season_id,
+            ft.id AS user_team_id,
+            ti.abbreviation AS tournament_abbr,
             ti.weeks AS total_games,
+            s.end_year AS season_year,
+            (
+                SELECT MAX(fm.match_num)
+                FROM fantasydata.fantasy_team_instance fti
+                JOIN fantasydata.fantasy_matchups fm
+                    ON fm.fantasy_team_instance1_id = fti.id
+                    OR fm.fantasy_team_instance2_id = fti.id
+                WHERE fti.fantasy_team_id = ft.id
+            ) AS latest_game,
             (
                 SELECT json_agg(
                     to_jsonb(all_ft) || jsonb_build_object(
@@ -614,10 +539,12 @@ app.get("/leagues/:leagueId", async (req: Request, res: Response) => {
                 WHERE lsr.league_id = l.id
             ) AS scoring_rules
         FROM fantasydata.leagues l
-        JOIN fantasydata.fantasy_teams ft ON ft.league_id = l.id
+        JOIN fantasydata.fantasy_teams ft
+            ON ft.league_id = l.id
+           AND ft.user_id = $1
         JOIN irldata.tournament_info ti ON ti.id = l.tournament_id
-        WHERE ft.user_id = $1
-          AND l.id = $2;
+        JOIN irldata.season s ON s.id = l.season_id
+        WHERE l.id = $2;
     `;
 
     const result = await client.query(sql, [userId, leagueId]);
